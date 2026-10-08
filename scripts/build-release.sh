@@ -5,8 +5,9 @@
 #
 # -skipMacroValidation: Xcode asks to trust each package macro (TCA's, Dependencies', …) again
 # whenever its version changes, and only interactively — a command-line build just fails. The
-# versions are pinned in the committed Package.resolved, so a macro changes only with a
-# deliberate dependency bump.
+# versions are pinned in the app's committed Package.resolved
+# (App/HomerConsole.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/), so a macro changes
+# only with a deliberate dependency bump.
 
 set -euo pipefail
 

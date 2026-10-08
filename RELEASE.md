@@ -56,7 +56,8 @@ Then, in Bridge Commander, raise the requirement in `Packages/RepositoryFeature/
 
 ## Notes
 
-- `build-release.sh` passes `-skipMacroValidation`: Xcode asks to trust each package macro again whenever its version changes, only interactively, so a command-line build after a dependency bump would fail. The versions are pinned in the committed `Package.resolved`
+- `build-release.sh` passes `-skipMacroValidation`: Xcode asks to trust each package macro again whenever its version changes, only interactively, so a command-line build after a dependency bump would fail. The versions are pinned in the app's committed `Package.resolved`
+- The app and the package keep separate `Package.resolved` files: the app's (with Sparkle) in `App/HomerConsole.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/`, the package's at the root. Without its own, Xcode wrote the app's pins — Sparkle included — into the root file, which `swift build` then pruned again, leaving the tree dirty for `make publish`
 - The updater starts only in Release builds; a Debug build runs from DerivedData, where installing an update would replace the build being worked on
 - **Notarization rejected** — the scripts print the notarytool log; usual causes are an unsigned binary in the bundle or a revoked certificate
 - **Gatekeeper still warns after install** — `xcrun stapler validate "dist/Homer Console.app"` and `xcrun stapler validate dist/HomerConsole-<version>.dmg`
