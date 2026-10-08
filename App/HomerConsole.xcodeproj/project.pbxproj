@@ -184,7 +184,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.martinstrambach.HomerConsole;
 				PRODUCT_MODULE_NAME = HomerConsole;
 				PRODUCT_NAME = "Homer Console";
@@ -216,7 +216,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.martinstrambach.HomerConsole;
 				PRODUCT_MODULE_NAME = HomerConsole;
 				PRODUCT_NAME = "Homer Console";
