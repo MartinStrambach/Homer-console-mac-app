@@ -32,3 +32,8 @@ The module layout, how a host embeds the console, and every design note and gotc
 - In `TestStore` assertions, mutate `@Shared` state as `$0.$x.withLock { $0 = … }`
 - Bridge Commander builds the package with TCA's `ComposableArchitecture2Deprecations` trait on, which a package build does not: build Bridge Commander against the checkout before tagging a release
 - App: `xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination 'platform=macOS' build` (add `-skipMacroValidation` from the command line)
+- Known issues in a test run come from `skipInFlightEffects()` (TCA reports skipped effects that way) and are expected
+
+## Release
+- `make release` then `make publish` (RELEASE.md): Developer ID build, notarization, DMG, GitHub release with the Sparkle `appcast.xml`. The tag it creates is also the package's SwiftPM version — bump `MARKETING_VERSION` in `App/project.yml` (then `xcodegen`), never move a tag
+- Sparkle (updates) is in the app target only (`App/HomerConsole/`), never in the package: Bridge Commander has its own updater

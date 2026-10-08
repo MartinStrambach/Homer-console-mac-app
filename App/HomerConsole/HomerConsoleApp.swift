@@ -1,6 +1,7 @@
 import AppKit
 import ComposableArchitecture
 import HomerFeature
+import Sparkle
 import SwiftUI
 
 /// The Homer console on its own: the `HomerFeature` package Bridge Commander embeds as a section,
@@ -14,6 +15,14 @@ struct HomerConsoleApp: App {
 
 	@AppStorage("uiFontSize")
 	private var uiFontSize = TextSize.default
+
+	/// Created with the app, as Sparkle expects: a started updater schedules its background
+	/// checks from here.
+	private let updaterController = SPUStandardUpdaterController(
+		startingUpdater: startsUpdater,
+		updaterDelegate: nil,
+		userDriverDelegate: nil
+	)
 
 	var body: some Scene {
 		Window("Homer Console", id: "main") {
@@ -32,6 +41,9 @@ struct HomerConsoleApp: App {
 		.windowStyle(.hiddenTitleBar)
 		.defaultSize(width: 1280, height: 820)
 		.commands {
+			CommandGroup(after: .appInfo) {
+				CheckForUpdatesView(updater: updaterController.updater)
+			}
 			CommandGroup(after: .toolbar) {
 				Button("Bigger Text") { uiFontSize = TextSize.clamped(uiFontSize + 1) }
 					.keyboardShortcut("=", modifiers: .command)
@@ -44,6 +56,10 @@ struct HomerConsoleApp: App {
 					.disabled(uiFontSize == TextSize.default)
 				Divider()
 			}
+		}
+
+		Settings {
+			SettingsView(updater: updaterController.updater)
 		}
 	}
 }

@@ -8,12 +8,21 @@
 
 /* Begin PBXBuildFile section */
 		1E98EE9332D984D63EBCBF35 /* HomerConsoleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */; };
+		417DA16F00F9EEAC2375AFA9 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */; };
+		658D0A6F7420F92881AF8477 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */; };
+		73BD98B7588AAC1106D18CAC /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D183F5DE98E116F95171BDB2 /* Sparkle */; };
 		AD5AF059F1AD53ED6D063C0E /* HomerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = C1326D13D0B116FCF22CAF53 /* HomerFeature */; };
+		B9296AB92CAE6318FDDFFFA7 /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9468CE81A006A3C2B27BE375 /* UpdateSettingsView.swift */; };
+		C2D20D373DD49A5FA57780B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0915455C8FB02C7AA1F01919 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0681C9FF9A6457FDFB581E58 /* HomerConsole.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomerConsole.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0915455C8FB02C7AA1F01919 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		78EC1207A0E38ECF81B4EF19 /* Homer-console-mac-app */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "Homer-console-mac-app"; path = ..; sourceTree = SOURCE_ROOT; };
+		9468CE81A006A3C2B27BE375 /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
+		96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
+		D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomerConsoleApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -23,6 +32,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD5AF059F1AD53ED6D063C0E /* HomerFeature in Frameworks */,
+				73BD98B7588AAC1106D18CAC /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,7 +58,11 @@
 		17BD68A52D1495C94153DF16 /* HomerConsole */ = {
 			isa = PBXGroup;
 			children = (
+				0915455C8FB02C7AA1F01919 /* Assets.xcassets */,
+				96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */,
 				ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */,
+				D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */,
+				9468CE81A006A3C2B27BE375 /* UpdateSettingsView.swift */,
 			);
 			path = HomerConsole;
 			sourceTree = "<group>";
@@ -70,6 +84,7 @@
 			buildConfigurationList = 320D2ACEDF84F6000D45C6AA /* Build configuration list for PBXNativeTarget "HomerConsole" */;
 			buildPhases = (
 				9494F6F445A8DBCE1CB756B4 /* Sources */,
+				6F26BD714A9F5B8C6CC20842 /* Resources */,
 				0145B97EA053AF310F17B527 /* Frameworks */,
 			);
 			buildRules = (
@@ -79,6 +94,7 @@
 			name = HomerConsole;
 			packageProductDependencies = (
 				C1326D13D0B116FCF22CAF53 /* HomerFeature */,
+				D183F5DE98E116F95171BDB2 /* Sparkle */,
 			);
 			productName = HomerConsole;
 			productReference = 0681C9FF9A6457FDFB581E58 /* HomerConsole.app */;
@@ -108,6 +124,7 @@
 			mainGroup = CBE1AAD7E4B396F74AEA1066;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				0751E4B89E6C36880CDA0671 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				0B42A6AD7ED7121A4B1C973B /* XCLocalSwiftPackageReference ".." */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -120,12 +137,26 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		6F26BD714A9F5B8C6CC20842 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C2D20D373DD49A5FA57780B1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		9494F6F445A8DBCE1CB756B4 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				417DA16F00F9EEAC2375AFA9 /* CheckForUpdatesView.swift in Sources */,
 				1E98EE9332D984D63EBCBF35 /* HomerConsoleApp.swift in Sources */,
+				658D0A6F7420F92881AF8477 /* SettingsView.swift in Sources */,
+				B9296AB92CAE6318FDDFFFA7 /* UpdateSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,12 +170,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HomerConsole/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Homer Console";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -152,7 +184,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.martinstrambach.HomerConsole;
 				PRODUCT_MODULE_NAME = HomerConsole;
 				PRODUCT_NAME = "Homer Console";
@@ -169,12 +201,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HomerConsole/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Homer Console";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -182,7 +215,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.martinstrambach.HomerConsole;
 				PRODUCT_MODULE_NAME = HomerConsole;
 				PRODUCT_NAME = "Homer Console";
@@ -341,10 +374,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		0751E4B89E6C36880CDA0671 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		C1326D13D0B116FCF22CAF53 /* HomerFeature */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HomerFeature;
+		};
+		D183F5DE98E116F95171BDB2 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0751E4B89E6C36880CDA0671 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

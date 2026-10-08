@@ -9,23 +9,36 @@ options:
 packages:
   HomerConsole:
     path: ..
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    majorVersion: 2.10.0
 targets:
   HomerConsole:
     type: application
     platform: macOS
     sources:
-      - HomerConsole
+      - path: HomerConsole
+        excludes:
+          - Info.plist
     dependencies:
       - package: HomerConsole
         product: HomerFeature
+      - package: Sparkle
+    scheme: {}
     settings:
       base:
         PRODUCT_NAME: Homer Console
         PRODUCT_MODULE_NAME: HomerConsole
         PRODUCT_BUNDLE_IDENTIFIER: com.martinstrambach.HomerConsole
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 1
+        # The release version, also the tag `make publish` creates — which is the package's
+        # SwiftPM version too, so app and package share one version line.
+        MARKETING_VERSION: 0.2.0
+        # CFBundleVersion: Sparkle compares versions by it, so it follows MARKETING_VERSION.
+        CURRENT_PROJECT_VERSION: $(MARKETING_VERSION)
         GENERATE_INFOPLIST_FILE: YES
+        # Merged over the generated plist: only the Sparkle keys, which have no INFOPLIST_KEY_.
+        INFOPLIST_FILE: HomerConsole/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: Homer Console
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         INFOPLIST_KEY_NSHumanReadableCopyright: ""

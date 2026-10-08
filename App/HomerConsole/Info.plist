@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Merged over the generated Info.plist (GENERATE_INFOPLIST_FILE), so it holds only keys
+         that have no INFOPLIST_KEY_ build setting. Anything else here would override the
+         generated value. -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/MartinStrambach/Homer-console-mac-app/releases/latest/download/appcast.xml</string>
+    <!-- Bridge Commander's key: one Sparkle key (the keychain's default `ed25519` account) signs
+         both apps' updates. -->
+    <key>SUPublicEDKey</key>
+    <string>PX6+XiQlbR/0Og3/7qdita16JEbiOTxV0MYM2G778F8=</string>
+    <!-- Seconds between automatic update checks (Sparkle's default is one day). -->
+    <key>SUScheduledCheckInterval</key>
+    <integer>43200</integer>
+</dict>
+</plist>
