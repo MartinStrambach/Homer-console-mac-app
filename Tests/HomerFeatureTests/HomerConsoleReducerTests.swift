@@ -1,7 +1,10 @@
 import ComposableArchitecture
 import DependenciesTestSupport
 import Foundation
+@testable import HomerContinuations
+@testable import HomerCore
 @testable import HomerFeature
+@testable import HomerSignIn
 import Testing
 
 /// `.dependencies` gives every test fresh dependencies, and with them its own app storage: the

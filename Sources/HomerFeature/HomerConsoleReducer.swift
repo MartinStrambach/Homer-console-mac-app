@@ -1,10 +1,12 @@
 import ComposableArchitecture
 import Foundation
+import HomerCore
+import HomerSignIn
 
-/// The Homer console section: every instance the user signed in to, each a live
+/// The Homer console: every instance the user signed in to, each a live
 /// `HomerInstanceReducer` with its own session, and the one on screen. All of them check their
 /// session at launch and poll their open questions; only the selected one polls its processes,
-/// and only while the section is on screen. Switching is instant: the instance shows its last
+/// and only while the console is on screen. Switching is instant: the instance shows its last
 /// data, and refreshes right away.
 @Reducer
 public struct HomerConsoleReducer: Sendable {
@@ -62,7 +64,7 @@ public struct HomerConsoleReducer: Sendable {
 		/// Shared by the instances, so a switch keeps the page.
 		public var tab: Tab = .processes
 
-		/// Whether the section is on screen.
+		/// Whether the console is on screen.
 		var isVisible = false
 		var hasStarted = false
 
@@ -72,7 +74,8 @@ public struct HomerConsoleReducer: Sendable {
 			instances[id: selectedInstanceID]
 		}
 
-		/// Every instance's open questions, for the section switcher's badge.
+		/// Every instance's open questions, for the host's badge: Bridge Commander's section
+		/// switcher, the standalone app's Dock icon.
 		public var openQuestionCount: Int {
 			instances.reduce(0) { $0 + $1.openQuestionCount }
 		}

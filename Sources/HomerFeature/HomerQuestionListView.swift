@@ -1,5 +1,7 @@
-import AppUI
 import ComposableArchitecture
+import HomerCore
+import HomerProcessDetail
+import HomerUI
 import SwiftUI
 
 /// The console's questions page: open questions, each answered with one of its options or a
@@ -35,6 +37,25 @@ struct HomerQuestionListView: View {
 						}
 					}
 					.padding()
+				}
+			}
+		}
+	}
+}
+
+/// A run's open questions on its page, answered through the instance like the Questions page's.
+struct HomerRunQuestionsView: View {
+	let store: StoreOf<HomerInstanceReducer>
+	let processId: Int
+
+	var body: some View {
+		let questions = store.questions.filter { $0.processId == processId }
+		if !questions.isEmpty {
+			HomerDetailSection("Questions", subtitle: "The agent asked for operator input") {
+				VStack(spacing: 10) {
+					ForEach(questions) { question in
+						HomerQuestionCard(store: store, question: question, showsProcessLink: false)
+					}
 				}
 			}
 		}
@@ -155,57 +176,5 @@ struct HomerQuestionCard: View {
 	static func markdown(_ text: String) -> AttributedString {
 		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
 		return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
-	}
-}
-
-/// Lays its subviews out left to right, wrapping onto new lines — for a question's options,
-/// which are as many as the agent offered.
-struct HomerFlowLayout: Layout {
-	var spacing: CGFloat
-
-	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-		let rows = rows(for: subviews, width: proposal.width ?? .infinity)
-		let width = rows.map(\.width).max() ?? 0
-		let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
-		return CGSize(width: width, height: height)
-	}
-
-	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-		var y = bounds.minY
-		for row in rows(for: subviews, width: bounds.width) {
-			var x = bounds.minX
-			for index in row.indices {
-				let size = subviews[index].sizeThatFits(.unspecified)
-				subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-				x += size.width + spacing
-			}
-			y += row.height + spacing
-		}
-	}
-
-	private struct Row {
-		var indices: [Int] = []
-		var width: CGFloat = 0
-		var height: CGFloat = 0
-	}
-
-	private func rows(for subviews: Subviews, width: CGFloat) -> [Row] {
-		var rows: [Row] = []
-		var current = Row()
-		for index in subviews.indices {
-			let size = subviews[index].sizeThatFits(.unspecified)
-			let widthWithItem = current.indices.isEmpty ? size.width : current.width + spacing + size.width
-			if !current.indices.isEmpty, widthWithItem > width {
-				rows.append(current)
-				current = Row()
-			}
-			current.width = current.indices.isEmpty ? size.width : current.width + spacing + size.width
-			current.height = max(current.height, size.height)
-			current.indices.append(index)
-		}
-		if !current.indices.isEmpty {
-			rows.append(current)
-		}
-		return rows
 	}
 }

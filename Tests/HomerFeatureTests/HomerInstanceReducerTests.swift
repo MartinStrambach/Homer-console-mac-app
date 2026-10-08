@@ -1,7 +1,11 @@
 import ComposableArchitecture
 import DependenciesTestSupport
 import Foundation
+@testable import HomerContinuations
+@testable import HomerCore
 @testable import HomerFeature
+@testable import HomerProcessDetail
+@testable import HomerSignIn
 import Testing
 
 @MainActor

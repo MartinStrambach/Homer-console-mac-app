@@ -1,44 +1,22 @@
 import ComposableArchitecture
 import Foundation
+import HomerAgents
+import HomerContinuations
+import HomerCore
+import HomerCosts
+import HomerProcessDetail
+import HomerSignIn
 
-/// A page of the web console opened in the embedded browser sheet, with the session cookies it
-/// needs to open signed in and the instance's own web data store to open it in.
-public struct HomerWebPage: Equatable, Identifiable {
-	public let url: URL
-	public let title: String
-	let cookies: [HTTPCookie]
-	let dataStoreID: UUID
-
-	public var id: URL {
-		url
-	}
-}
-
-extension HomerWebPage {
-	/// A page of the instance's web console, e.g. `processes/42`, opened with the session the
-	/// app holds for it.
-	init?(baseURL: String, path: String, title: String, cookies: [HTTPCookie]) {
-		guard let url = HomerEndpoint.pageURL(baseURL: baseURL, path: path) else {
-			return nil
-		}
-		self.url = url
-		self.title = title
-		self.cookies = cookies
-		self.dataStoreID = HomerEndpoint.webDataStoreID(baseURL: baseURL)
-	}
-}
-
-/// One Homer instance of the console section: its session, sign-in form, process list, open
+/// One Homer instance of the console: its session, sign-in form, process list, open
 /// questions and other pages. A process opens natively in `processDetail`; what the app does not
 /// show natively (agent details, the file editor, workflow graphs) opens as the web console's
 /// own page in `webPage`. `HomerConsoleReducer` holds one per instance, all live at once:
 /// switching shows another's last data straight away.
 @Reducer
 public struct HomerInstanceReducer: Sendable {
-	/// The console's own page size (`pagination.defaultLimit`).
-	static let pageSize = 50
-	/// The console's own refresh cadences (`polling.processListInterval`, `useQuestions`).
-	static let processPollInterval: Duration = .seconds(5)
+	static let pageSize = HomerProcessListing.pageSize
+	static let processPollInterval = HomerProcessListing.pollInterval
+	/// The console's own refresh cadence for questions (`useQuestions`).
 	static let questionPollInterval: Duration = .seconds(30)
 	/// The console's Flow cells refresh on this cadence too (`useFlowSummary`).
 	static let flowSummaryPollInterval: Duration = .seconds(30)
@@ -227,10 +205,7 @@ public struct HomerInstanceReducer: Sendable {
 		case costs(HomerCostsReducer.Action)
 		case processDetail(PresentationAction<HomerProcessDetailReducer.Action>)
 
-		public enum ProcessAction: Equatable, Sendable {
-			case kill
-			case retry
-		}
+		public typealias ProcessAction = HomerProcessAction
 
 		public enum Alert: Equatable, Sendable {
 			case killConfirmed(processId: Int)

@@ -1,0 +1,10 @@
+.build/
+build/
+xcuserdata/
+.DS_Store
+
+# SPM package state
+.swiftpm/
+
+### Claude code files
+.claude/settings.local.json

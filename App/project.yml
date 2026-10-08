@@ -1,0 +1,40 @@
+# Generates HomerConsole.xcodeproj: `xcodegen` from this directory after changing this file.
+# The generated project is committed, so building needs no xcodegen.
+name: HomerConsole
+options:
+  bundleIdPrefix: com.martinstrambach
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  HomerConsole:
+    path: ..
+targets:
+  HomerConsole:
+    type: application
+    platform: macOS
+    sources:
+      - HomerConsole
+    dependencies:
+      - package: HomerConsole
+        product: HomerFeature
+    settings:
+      base:
+        PRODUCT_NAME: Homer Console
+        PRODUCT_MODULE_NAME: HomerConsole
+        PRODUCT_BUNDLE_IDENTIFIER: com.martinstrambach.HomerConsole
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Homer Console
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        SWIFT_VERSION: 6.0
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        # Not sandboxed, like Bridge Commander: downloads go straight to ~/Downloads.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        DEAD_CODE_STRIPPING: YES

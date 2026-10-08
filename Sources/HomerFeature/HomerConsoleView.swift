@@ -1,18 +1,28 @@
-import AppUI
 import ComposableArchitecture
+import HomerAgents
+import HomerContinuations
+import HomerCore
+import HomerCosts
+import HomerProcessDetail
+import HomerSignIn
+import HomerUI
 import SwiftUI
 
-/// The Homer section of the main window. `sectionSwitcher` heads it, in the place it holds in
-/// every section's header; the instance menu at the other end switches between the instances
-/// (⌘1…⌘9 too), each of which stays signed in.
-public struct HomerConsoleView: View {
+/// The Homer console. `leading` heads it, before the page picker — the host's section switcher
+/// in Bridge Commander, the console's title in the standalone app; the instance menu at the
+/// other end switches between the instances (⌘1…⌘9 too), each of which stays signed in.
+///
+/// The host sends the store `start` once at launch (open questions are polled from then on, so
+/// a badge can show them before the console is ever on screen) and sets the text size with
+/// `homerUIFontScale(_:)`.
+public struct HomerConsoleView<Leading: View>: View {
 	@Bindable
 	private var store: StoreOf<HomerConsoleReducer>
-	private let sectionSwitcher: AppSectionSwitcher
+	private let leading: Leading
 
-	public init(store: StoreOf<HomerConsoleReducer>, sectionSwitcher: AppSectionSwitcher) {
+	public init(store: StoreOf<HomerConsoleReducer>, @ViewBuilder leading: () -> Leading) {
 		self.store = store
-		self.sectionSwitcher = sectionSwitcher
+		self.leading = leading()
 	}
 
 	public var body: some View {
@@ -52,7 +62,7 @@ public struct HomerConsoleView: View {
 	private var headerView: some View {
 		HStack {
 			HStack(spacing: 12) {
-				sectionSwitcher
+				leading
 
 				if showsConsole {
 					Picker("Homer page", selection: $store.tab) {
@@ -80,8 +90,8 @@ public struct HomerConsoleView: View {
 						color: .blue,
 						action: { store.send(.refreshTapped) }
 					)
-					// The repositories' ⌘R is disabled while this section is shown (see
-					// `RootRepositoryView`), so this one has the key to itself.
+					// A host with a ⌘R of its own disables it while the console is shown (Bridge
+					// Commander's `RootRepositoryView` does), so this one has the key to itself.
 					.keyboardShortcut("r", modifiers: .command)
 
 					HeaderButton(
@@ -94,8 +104,9 @@ public struct HomerConsoleView: View {
 				}
 			}
 		}
-		// Matches the repository header's height, which its 30 pt buttons set, so the switcher
-		// does not move when the section changes — signed out, this header has no buttons.
+		// The height its 30 pt buttons give it, signed out too (there are none then), so the
+		// leading view does not move — in Bridge Commander that also matches the repository
+		// header's, so the section switcher stays put when the section changes.
 		.frame(minHeight: 30)
 		.padding()
 		.windowTitleBarArea()
@@ -284,54 +295,9 @@ struct HomerInstanceView: View {
 			HomerWebPageView(page: page)
 		}
 		.sheet(item: $store.scope(\.$processDetail, action: \.processDetail)) { detailStore in
-			HomerProcessDetailView(store: detailStore, instanceStore: store)
+			HomerProcessDetailView(store: detailStore) { processId in
+				HomerRunQuestionsView(store: store, processId: processId)
+			}
 		}
-	}
-}
-
-// MARK: - Shared pieces
-
-/// A process status as the console's colored badge shows it.
-struct HomerStatusBadge: View {
-	let status: HomerProcessStatus
-
-	var body: some View {
-		Text(status.title)
-			.scaledFont(.caption)
-			.fontWeight(.semibold)
-			.foregroundStyle(.white)
-			.padding(.horizontal, 7)
-			.padding(.vertical, 2)
-			.background(color, in: Capsule())
-	}
-
-	private var color: Color {
-		switch status {
-		case .working:
-			.blue
-		case .finished:
-			.green
-		case .failed:
-			.red
-		case .killed:
-			.orange
-		case .created, .unknown:
-			.gray
-		}
-	}
-}
-
-/// An inline error under a list's toolbar: the last good data stays below it.
-struct HomerErrorBanner: View {
-	let message: String
-
-	var body: some View {
-		Label(message, systemImage: "exclamationmark.triangle.fill")
-			.scaledFont(.callout)
-			.foregroundStyle(.red)
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.padding(.horizontal)
-			.padding(.vertical, 6)
-			.background(Color.red.opacity(0.08))
 	}
 }
