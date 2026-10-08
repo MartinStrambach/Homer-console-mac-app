@@ -1,3 +1,5 @@
+<p align="center"><img src="App/HomerConsole/Assets.xcassets/AppIcon.appiconset/icon_256x256@2x.png" width="160" height="160" alt="Homer Console icon"></p>
+
 # Homer Console for Mac
 
 A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the file editor, debug runs) opens as the web console's own page.
@@ -20,7 +22,7 @@ Sources/
   HomerFeature/         # HomerConsoleReducer/View, HomerInstanceReducer, process list, questions — composes the rest
 Tests/<Module>Tests/    # one Swift Testing target per module
 App/                    # the standalone app (project.yml + generated HomerConsole.xcodeproj)
-scripts/, Makefile      # release pipeline (RELEASE.md) and the app icon generator
+scripts/, Makefile      # release pipeline (RELEASE.md) and the app icon and logo generator
 ```
 
 Each module depends only on those above it in this list (the feature modules on `HomerCore`, `HomerUI` and, for the run and agent pages, `HomerWorkflowGraph`); `HomerFeature` depends on all of them. Only `HomerFeature` is a product: the others are its parts, and what they share with one another is declared `package`, not `public`, so a host sees only the console's own API.
@@ -56,7 +58,7 @@ HomerConsoleView(store: store) {
 
 The app is one window with the console, the open questions as the Dock badge, and the text size in the View menu (Bigger ⌘=, Smaller ⌘-, Actual Size ⌘0) and in Settings. Not sandboxed, like Bridge Commander: downloads go to `~/Downloads`.
 
-It updates itself with [Sparkle](https://sparkle-project.org), as Bridge Commander does: "Check for Updates…" in the app menu, automatic checks and installs in Settings ▸ Updates, the feed being the `appcast.xml` of the newest GitHub release. Releases are built, notarized and published with `make release` and `make publish` — see [RELEASE.md](RELEASE.md). The icon is drawn by `scripts/make-icon.swift` (`swift scripts/make-icon.swift`).
+It updates itself with [Sparkle](https://sparkle-project.org), as Bridge Commander does: "Check for Updates…" in the app menu, automatic checks and installs in Settings ▸ Updates, the feed being the `appcast.xml` of the newest GitHub release. Releases are built, notarized and published with `make release` and `make publish` — see [RELEASE.md](RELEASE.md). The icon — and `HomerUI`'s copy of it, the logo the sign-in form and `HomerConsoleTitle` show (`HomerLogo`) — is drawn by `scripts/make-icon.swift` (`swift scripts/make-icon.swift`).
 
 ```
 xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination 'platform=macOS' build

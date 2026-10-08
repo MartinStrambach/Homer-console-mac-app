@@ -16,9 +16,9 @@ The module layout, how a host embeds the console and the notes that hold across 
 - `App/` — the standalone app; `HomerConsole.xcodeproj` is generated from `App/project.yml` by `xcodegen` (run in `App/`), never edited by hand
 
 ## Access control
-- `HomerFeature` is the only product. What modules share among themselves is `package`; `public` is only for the console's API to a host (`HomerConsoleReducer`, `HomerConsoleView`, `HomerConsoleTitle`, `homerUIFontScale(_:)`, `HomerSymbols`) and the types its public state and actions expose
+- `HomerFeature` is the only product. What modules share among themselves is `package`; `public` is only for the console's API to a host (`HomerConsoleReducer`, `HomerConsoleView`, `HomerConsoleTitle`, `homerUIFontScale(_:)`, `HomerLogo`) and the types its public state and actions expose
 - A `package` view or struct used from another module needs an explicit `package init` — the memberwise one is internal
-- `HomerFeature` re-exports `HomerUI` (`Sources/HomerFeature/Exports.swift`), so a host gets `homerUIFontScale(_:)` and `HomerSymbols` from `import HomerFeature` alone — a host with `MemberImportVisibility` on would otherwise need `import HomerUI`, a module that is not a product
+- `HomerFeature` re-exports `HomerUI` (`Sources/HomerFeature/Exports.swift`), so a host gets `homerUIFontScale(_:)` and `HomerLogo` from `import HomerFeature` alone — a host with `MemberImportVisibility` on would otherwise need `import HomerUI`, a module that is not a product
 - `HomerUI/DesignSystem` stays `package`: public extension members named like the host's own (`scaledFont`, `scaledBordered`, …) would make every call in the host ambiguous
 
 ## Patterns

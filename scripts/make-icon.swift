@@ -1,5 +1,7 @@
 // Writes App/HomerConsole/Assets.xcassets/AppIcon.appiconset: Homer taking a bite out of the
-// rainbow Apple logo, under Springfield's sky, at every size macOS asks for.
+// rainbow Apple logo, under Springfield's sky, at every size macOS asks for — and the same
+// drawing without the icon grid's margin and shadow as Sources/HomerUI/Resources/HomerLogo.png,
+// the logo the console's views show (`HomerLogo`).
 //
 //   swift scripts/make-icon.swift
 //
@@ -9,6 +11,7 @@ import AppKit
 
 let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent()
 let iconSet = root.appending(path: "App/HomerConsole/Assets.xcassets/AppIcon.appiconset")
+let logoFile = root.appending(path: "Sources/HomerUI/Resources/HomerLogo.png")
 
 /// The 1024 pt master, on macOS's icon grid: an 824 pt rounded square centred in the canvas,
 /// leaving room for the shadow the system draws. Drawn top-down (y grows downwards).
@@ -26,16 +29,33 @@ func master() -> NSImage {
 		context.fillPath()
 		context.restoreGState()
 
-		context.saveGState()
-		context.addPath(square)
-		context.clip()
-		drawSky(in: context, body: body)
-		drawHomer(in: context)
-		drawApple(in: context, origin: CGPoint(x: 654, y: 444), width: 224)
-		drawHand(in: context)
-		context.restoreGState()
+		drawContent(in: context, clippedTo: square, body: body)
 		return true
 	}
+}
+
+/// The rounded square alone, filling the image: the master's 824 pt body, without the margin
+/// and shadow of the icon grid.
+func logo() -> NSImage {
+	NSImage(size: NSSize(width: 824, height: 824), flipped: true) { _ in
+		let context = NSGraphicsContext.current!.cgContext
+		context.translateBy(x: -100, y: -100)
+		let body = CGRect(x: 100, y: 100, width: 824, height: 824)
+		let square = CGPath(roundedRect: body, cornerWidth: 185, cornerHeight: 185, transform: nil)
+		drawContent(in: context, clippedTo: square, body: body)
+		return true
+	}
+}
+
+func drawContent(in context: CGContext, clippedTo square: CGPath, body: CGRect) {
+	context.saveGState()
+	context.addPath(square)
+	context.clip()
+	drawSky(in: context, body: body)
+	drawHomer(in: context)
+	drawApple(in: context, origin: CGPoint(x: 654, y: 444), width: 224)
+	drawHand(in: context)
+	context.restoreGState()
 }
 
 func rgb(_ hex: UInt32) -> CGColor {
@@ -456,3 +476,7 @@ try """
 
 """.write(to: iconSet.deletingLastPathComponent().appending(path: "Contents.json"), atomically: true, encoding: .utf8)
 print("Wrote \(iconSet.path)")
+
+try FileManager.default.createDirectory(at: logoFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+try png(logo(), pixels: 512).write(to: logoFile)
+print("Wrote \(logoFile.path)")

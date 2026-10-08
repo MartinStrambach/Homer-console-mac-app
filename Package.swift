@@ -31,7 +31,8 @@ let package = Package(
 		),
 		.target(
 			name: "HomerUI",
-			dependencies: ["HomerCore"]
+			dependencies: ["HomerCore"],
+			resources: [.process("Resources")]
 		),
 		.target(
 			name: "HomerWorkflowGraph",
