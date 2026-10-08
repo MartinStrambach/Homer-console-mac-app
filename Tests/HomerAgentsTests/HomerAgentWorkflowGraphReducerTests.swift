@@ -3,6 +3,7 @@ import DependenciesTestSupport
 import Foundation
 @testable import HomerCore
 @testable import HomerAgents
+import HomerWorkflowGraph
 import Testing
 
 @MainActor
