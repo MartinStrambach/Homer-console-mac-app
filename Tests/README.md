@@ -1,0 +1,4 @@
+# Tests
+
+- One target per module (`Tests/<Module>Tests`), each `@testable import`ing the modules whose internals it reads — a test of the console that asserts on the sign-in form's state imports `HomerSignIn` too
+- `.dependencies` (DependenciesTestSupport) gives each test its own app storage for the `@Shared` instance list and selection. A `@Shared` value written by a delegate action that a `.send` delivers within the same effect is already the new one at the step before it, so its expectation goes there (see `addInstance` in `HomerConsoleReducerTests`). Build a `State` before passing it to `TestStore`, never inline: `initialState` is an autoclosure evaluated inside the store's own dependencies, so a `@Shared` value written there lands in a different app storage than the one the store's expectations read, and the URL shows up as a spurious `""` → URL diff
