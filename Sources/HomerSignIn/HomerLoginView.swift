@@ -31,9 +31,7 @@ package struct HomerLoginView: View {
 		ScrollView {
 			VStack(spacing: 20) {
 				VStack(spacing: 8) {
-					Image(systemName: HomerSymbols.console)
-						.scaledFont(size: 44)
-						.foregroundStyle(.secondary)
+					HomerLogo(size: 64)
 					Text(title)
 						.scaledFont(.title2)
 						.fontWeight(.semibold)
