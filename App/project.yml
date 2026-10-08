@@ -52,3 +52,12 @@ targets:
         ENABLE_APP_SANDBOX: NO
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         DEAD_CODE_STRIPPING: YES
+      configs:
+        # A debug build is its own app, as in Bridge Commander: its own user defaults and
+        # Application Support folder (named by the bundle identifier), so a debug run never
+        # touches the release app's instances and sessions. Its icon carries a "DEBUG" ribbon
+        # (scripts/make-icon.swift draws both).
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.martinstrambach.HomerConsole.debug
+          INFOPLIST_KEY_CFBundleDisplayName: Homer Console Debug
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIconDebug
