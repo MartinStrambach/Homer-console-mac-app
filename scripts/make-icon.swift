@@ -1,7 +1,8 @@
 // Writes App/HomerConsole/Assets.xcassets/AppIcon.appiconset: Homer taking a bite out of the
-// rainbow Apple logo, under Springfield's sky, at every size macOS asks for — and the same
-// drawing without the icon grid's margin and shadow as Sources/HomerUI/Resources/HomerLogo.png,
-// the logo the console's views show (`HomerLogo`).
+// rainbow Apple logo, under Springfield's sky, at every size macOS asks for; AppIconDebug.appiconset,
+// the same icon with a red "DEBUG" ribbon across its top-right corner, which the Debug
+// configuration uses; and the drawing without the icon grid's margin and shadow as
+// Sources/HomerUI/Resources/HomerLogo.png, the logo the console's views show (`HomerLogo`).
 //
 //   swift scripts/make-icon.swift
 //
@@ -10,12 +11,13 @@
 import AppKit
 
 let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent()
-let iconSet = root.appending(path: "App/HomerConsole/Assets.xcassets/AppIcon.appiconset")
+let assets = root.appending(path: "App/HomerConsole/Assets.xcassets")
 let logoFile = root.appending(path: "Sources/HomerUI/Resources/HomerLogo.png")
 
 /// The 1024 pt master, on macOS's icon grid: an 824 pt rounded square centred in the canvas,
-/// leaving room for the shadow the system draws. Drawn top-down (y grows downwards).
-func master() -> NSImage {
+/// leaving room for the shadow the system draws. Drawn top-down (y grows downwards). `debug` adds
+/// the Debug configuration's ribbon.
+func master(debug: Bool) -> NSImage {
 	let size = NSSize(width: 1024, height: 1024)
 	return NSImage(size: size, flipped: true) { _ in
 		let context = NSGraphicsContext.current!.cgContext
@@ -30,6 +32,9 @@ func master() -> NSImage {
 		context.restoreGState()
 
 		drawContent(in: context, clippedTo: square, body: body)
+		if debug {
+			drawDebugRibbon(in: context, clippedTo: square, body: body)
+		}
 		return true
 	}
 }
@@ -55,6 +60,39 @@ func drawContent(in context: CGContext, clippedTo square: CGPath, body: CGRect) 
 	drawHomer(in: context)
 	drawApple(in: context, origin: CGPoint(x: 654, y: 444), width: 224)
 	drawHand(in: context)
+	context.restoreGState()
+}
+
+/// A red band reading "DEBUG" across the body's top-right corner, so a debug build is told apart
+/// from the release app in the Dock and the app switcher. Its ends run off the rounded square.
+func drawDebugRibbon(in context: CGContext, clippedTo square: CGPath, body: CGRect) {
+	// The band's centre line runs from `offset` left of the corner to `offset` below it.
+	let offset = body.width * 0.36, thickness = body.width * 0.12
+	let length = offset * 2.squareRoot() + thickness * 2
+	let strip = CGRect(x: -length / 2, y: -thickness / 2, width: length, height: thickness)
+	let edge = thickness / 14
+
+	context.saveGState()
+	context.addPath(square)
+	context.clip()
+	context.translateBy(x: body.maxX - offset / 2, y: body.minY + offset / 2)
+	context.rotate(by: .pi / 4)
+	context.saveGState()
+	context.setShadow(offset: CGSize(width: 0, height: 4), blur: 12, color: NSColor.black.withAlphaComponent(0.35).cgColor)
+	context.setFillColor(rgb(0xD62828))
+	context.fill(strip)
+	context.restoreGState()
+	context.setFillColor(NSColor.white.withAlphaComponent(0.43).cgColor)
+	context.fill(CGRect(x: strip.minX, y: strip.minY, width: length, height: edge))
+	context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+	context.fill(CGRect(x: strip.minX, y: strip.maxY - edge, width: length, height: edge))
+
+	let text = NSAttributedString(string: "DEBUG", attributes: [
+		.font: NSFont.systemFont(ofSize: thickness * 0.62, weight: .heavy),
+		.foregroundColor: NSColor.white,
+	])
+	let size = text.size()
+	text.draw(at: CGPoint(x: -size.width / 2, y: -size.height / 2))
 	context.restoreGState()
 }
 
@@ -445,37 +483,44 @@ func png(_ image: NSImage, pixels: Int) -> Data {
 	return rep.representation(using: .png, properties: [:])!
 }
 
-let image = master()
-try? FileManager.default.removeItem(at: iconSet)
-try FileManager.default.createDirectory(at: iconSet, withIntermediateDirectories: true)
+/// Writes `<name>.appiconset` into the asset catalog: `image` at every size macOS asks for.
+func writeIconSet(named name: String, image: NSImage) throws {
+	let iconSet = assets.appending(path: "\(name).appiconset")
+	try? FileManager.default.removeItem(at: iconSet)
+	try FileManager.default.createDirectory(at: iconSet, withIntermediateDirectories: true)
 
-var entries: [String] = []
-for points in [16, 32, 128, 256, 512] {
-	for scale in [1, 2] {
-		let name = "icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"
-		try png(image, pixels: points * scale).write(to: iconSet.appending(path: name))
-		entries.append("""
-		    { "filename" : "\(name)", "idiom" : "mac", "scale" : "\(scale)x", "size" : "\(points)x\(points)" }
-		""")
+	var entries: [String] = []
+	for points in [16, 32, 128, 256, 512] {
+		for scale in [1, 2] {
+			let name = "icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"
+			try png(image, pixels: points * scale).write(to: iconSet.appending(path: name))
+			entries.append("""
+			    { "filename" : "\(name)", "idiom" : "mac", "scale" : "\(scale)x", "size" : "\(points)x\(points)" }
+			""")
+		}
 	}
-}
-let contents = """
-{
-  "images" : [
-\(entries.joined(separator: ",\n"))
-  ],
-  "info" : { "author" : "xcode", "version" : 1 }
+	let contents = """
+	{
+	  "images" : [
+	\(entries.joined(separator: ",\n"))
+	  ],
+	  "info" : { "author" : "xcode", "version" : 1 }
+	}
+
+	"""
+	try contents.write(to: iconSet.appending(path: "Contents.json"), atomically: true, encoding: .utf8)
+	print("Wrote \(iconSet.path)")
 }
 
-"""
-try contents.write(to: iconSet.appending(path: "Contents.json"), atomically: true, encoding: .utf8)
+try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
 try """
 {
   "info" : { "author" : "xcode", "version" : 1 }
 }
 
-""".write(to: iconSet.deletingLastPathComponent().appending(path: "Contents.json"), atomically: true, encoding: .utf8)
-print("Wrote \(iconSet.path)")
+""".write(to: assets.appending(path: "Contents.json"), atomically: true, encoding: .utf8)
+try writeIconSet(named: "AppIcon", image: master(debug: false))
+try writeIconSet(named: "AppIconDebug", image: master(debug: true))
 
 try FileManager.default.createDirectory(at: logoFile.deletingLastPathComponent(), withIntermediateDirectories: true)
 try png(logo(), pixels: 512).write(to: logoFile)

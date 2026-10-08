@@ -58,7 +58,9 @@ HomerConsoleView(store: store) {
 
 The app is one window with the console, the open questions as the Dock badge, and the text size in the View menu (Bigger ⌘=, Smaller ⌘-, Actual Size ⌘0) and in Settings. Not sandboxed, like Bridge Commander: downloads go to `~/Downloads`.
 
-It updates itself with [Sparkle](https://sparkle-project.org), as Bridge Commander does: "Check for Updates…" in the app menu, automatic checks and installs in Settings ▸ Updates, the feed being the `appcast.xml` of the newest GitHub release. Releases are built, notarized and published with `make release` and `make publish` — see [RELEASE.md](RELEASE.md). The icon — and `HomerUI`'s copy of it, the logo the sign-in form and `HomerConsoleTitle` show (`HomerLogo`) — is drawn by `scripts/make-icon.swift` (`swift scripts/make-icon.swift`).
+A Debug build is a separate app from the release one, as in Bridge Commander: bundle identifier `com.martinstrambach.HomerConsole.debug`, display name "Homer Console Debug", and the `AppIconDebug` icon (the app icon with a red "DEBUG" corner ribbon). It has its own user defaults and Application Support folder, so a debug run never touches the installed app's instances and sessions — and signs in to each instance on its own.
+
+It updates itself with [Sparkle](https://sparkle-project.org), as Bridge Commander does: "Check for Updates…" in the app menu, automatic checks and installs in Settings ▸ Updates, the feed being the `appcast.xml` of the newest GitHub release. Releases are built, notarized and published with `make release` and `make publish` — see [RELEASE.md](RELEASE.md). The icon — its debug variant and `HomerUI`'s copy of it, the logo the sign-in form and `HomerConsoleTitle` show (`HomerLogo`) — is drawn by `scripts/make-icon.swift` (`swift scripts/make-icon.swift`).
 
 ```
 xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination 'platform=macOS' build
