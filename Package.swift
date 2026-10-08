@@ -117,7 +117,10 @@ func testTarget(_ module: String) -> Target {
 }
 
 for target in package.targets {
-	target.swiftSettings = (target.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+	target.swiftSettings = (target.swiftSettings ?? []) + [
+		.treatAllWarnings(as: .error),
+		.enableUpcomingFeature("MemberImportVisibility"),
+	]
 	// Each module's design notes (`Sources/<Module>/README.md`), not a resource.
 	if target.type == .regular {
 		target.exclude += ["README.md"]

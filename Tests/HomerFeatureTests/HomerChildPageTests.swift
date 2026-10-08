@@ -4,8 +4,10 @@ import Foundation
 @testable import HomerAgents
 @testable import HomerContinuations
 @testable import HomerCore
+import HomerCosts
 @testable import HomerFeature
 @testable import HomerProcessDetail
+import HomerSignIn
 import Testing
 
 @MainActor

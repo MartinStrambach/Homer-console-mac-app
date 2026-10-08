@@ -2,6 +2,7 @@ import ComposableArchitecture
 import Foundation
 import HomerCore
 import HomerSignIn
+internal import OrderedCollections
 
 /// The Homer console: every instance the user signed in to, each a live
 /// `HomerInstanceReducer` with its own session, and the one on screen. All of them check their

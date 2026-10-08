@@ -18,6 +18,7 @@ The module layout, how a host embeds the console and the notes that hold across 
 ## Access control
 - `HomerFeature` is the only product. What modules share among themselves is `package`; `public` is only for the console's API to a host (`HomerConsoleReducer`, `HomerConsoleView`, `HomerConsoleTitle`, `homerUIFontScale(_:)`, `HomerSymbols`) and the types its public state and actions expose
 - A `package` view or struct used from another module needs an explicit `package init` — the memberwise one is internal
+- `HomerFeature` re-exports `HomerUI` (`Sources/HomerFeature/Exports.swift`), so a host gets `homerUIFontScale(_:)` and `HomerSymbols` from `import HomerFeature` alone — a host with `MemberImportVisibility` on would otherwise need `import HomerUI`, a module that is not a product
 - `HomerUI/DesignSystem` stays `package`: public extension members named like the host's own (`scaledFont`, `scaledBordered`, …) would make every call in the host ambiguous
 
 ## Patterns
@@ -29,6 +30,7 @@ The module layout, how a host embeds the console and the notes that hold across 
 ## Build & Test
 - `swift build`, `swift test` (or `swift test --filter <Module>Tests`)
 - Warnings are errors: every target, tests included (the loop at the end of `Package.swift`; a new target gets it automatically)
+- Imports are explicit: the same loop enables `MemberImportVisibility` (and the app target `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY`, as Bridge Commander does), so a file imports every module whose members it uses — another file's import, or a module imported only transitively, no longer makes them visible
 - In `TestStore` assertions, mutate `@Shared` state as `$0.$x.withLock { $0 = … }`
 - Bridge Commander builds the package with TCA's `ComposableArchitecture2Deprecations` trait on, which a package build does not: build Bridge Commander against the checkout before tagging a release
 - App: `xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination 'platform=macOS' build` (add `-skipMacroValidation` from the command line)
