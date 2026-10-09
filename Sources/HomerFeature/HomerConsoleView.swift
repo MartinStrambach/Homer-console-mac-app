@@ -273,6 +273,13 @@ struct HomerInstanceView: View {
 						description: Text("You don’t have access to this page.")
 					)
 				}
+				else if store.showsProcessDetail,
+				        let detailStore = store.scope(\.processDetail, action: \.processDetail.presented)
+				{
+					HomerProcessDetailView(store: detailStore, backTitle: processDetailBackTitle) { processId in
+						HomerRunQuestionsView(store: store, processId: processId)
+					}
+				}
 				else {
 					switch tab {
 					case .processes:
@@ -294,10 +301,24 @@ struct HomerInstanceView: View {
 		.sheet(item: $store.webPage) { page in
 			HomerWebPageView(page: page)
 		}
-		.sheet(item: $store.scope(\.$processDetail, action: \.processDetail)) { detailStore in
-			HomerProcessDetailView(store: detailStore) { processId in
-				HomerRunQuestionsView(store: store, processId: processId)
+	}
+
+	/// What the run's page goes back to: the page under it — an agent's page or editor, when one
+	/// shows in place of Agents or Schedules.
+	private var processDetailBackTitle: String {
+		let agentsPage: HomerAgentsReducer.Page? = switch tab {
+		case .agents: .agents
+		case .schedules: .schedules
+		default: nil
+		}
+		if let agentsPage {
+			if let editor = store.agents.editor, editor.openedFrom == agentsPage {
+				return editor.agentName
+			}
+			if let detail = store.agents.detail, detail.openedFrom == agentsPage {
+				return detail.agentName
 			}
 		}
+		return tab.title
 	}
 }

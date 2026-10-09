@@ -52,8 +52,8 @@ public struct HomerAgentsReducer: Sendable {
 		/// "Run Now"'s confirmation, and why a fire failed.
 		@Presents
 		public var alert: AlertState<Action.Alert>?
-		/// The run the Run sheet started, opened once the sheet is gone — the run's page is a sheet
-		/// too, and one sheet cannot come up while the other is still going.
+		/// The run the Run sheet started, opened once the sheet is gone — the run's page replaces
+		/// the page the sheet is attached to, which would take the sheet down with it mid-way.
 		var processToOpen: Int?
 		/// The page on screen, between `shown` and `hidden`: the list polls.
 		var shownPage: Page?
