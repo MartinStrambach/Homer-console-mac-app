@@ -284,16 +284,12 @@ struct HomerAgentsReducerTests {
 		await store.send(.runSheetDismissed)
 	}
 
-	@Test("the agent's editor and New Agent open in the web console")
-	func webConsolePages() async {
+	@Test("New Agent opens in the web console")
+	func newAgentInWebConsole() async {
 		let store = TestStore(initialState: loadedState()) {
 			HomerAgentsReducer()
 		}
 
-		await store.send(.editTapped(agentName: "team/a b"))
-		await store.receive(\.delegate, .openWebConsole(path: "agents/team%2Fa%20b/edit", title: "Edit team/a b"))
-		await store.send(.editTapped(agentName: "factory"))
-		await store.receive(\.delegate, .openWebConsole(path: "agents/factory/edit", title: "Edit factory"))
 		await store.send(.newAgentTapped)
 		await store.receive(\.delegate, .openWebConsole(path: "agents", title: "Agents"))
 	}

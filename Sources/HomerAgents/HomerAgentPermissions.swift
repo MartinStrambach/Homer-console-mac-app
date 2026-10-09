@@ -12,10 +12,16 @@ extension HomerUser {
 		isGranted("run", on: agent.name)
 	}
 
-	/// Edit (the web console's file editor, which also holds the debug runs) — offered as the
-	/// console offers it: a writable agent and an `edit` grant on it.
+	/// Edit (the agent's file editor) — offered as the console offers it: a writable agent and
+	/// an `edit` grant on it.
 	public func canEdit(_ agent: HomerAgent) -> Bool {
 		agent.isWritable && isGranted("edit", on: agent.name)
+	}
+
+	/// The editor's Debug panel: a `debug` grant on the agent, which nothing but the admin role
+	/// implies — a debug run is arbitrary command execution.
+	public func canDebug(_ agent: HomerAgent) -> Bool {
+		isGranted("debug", on: agent.name)
 	}
 
 	/// "New Agent" — an `edit` grant on some agent pattern, the server's condition for creating

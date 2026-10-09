@@ -2,7 +2,7 @@
 
 # Homer Console for Mac
 
-A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the file editor, debug runs) opens as the web console's own page.
+A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (creating an agent) opens as the web console's own page.
 
 It is a Swift package, `HomerFeature`, which [Bridge Commander](https://github.com/MartinStrambach/Bridge-Commander) embeds as its Homer section, and a standalone app (`App/`) that runs only the console.
 
@@ -16,7 +16,7 @@ Sources/
   HomerWorkflowGraph/   # LangGraph workflow models, the dagre-like layout, graph and status views
   HomerSignIn/          # sign-in form (reducer + view), Fill from Passwords
   HomerProcessDetail/   # a run's page: status, executions, command output, artifacts, Claude transcript
-  HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs
+  HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor
   HomerContinuations/   # Continuations page
   HomerCosts/           # Costs page (admins)
   HomerFeature/         # HomerConsoleReducer/View, HomerInstanceReducer, process list, questions — composes the rest
@@ -85,7 +85,7 @@ Each module's notes are in its own README, next to its sources:
 | `HomerWorkflowGraph` | [LangGraph workflow probing and polling, the dagre-like graph layout](Sources/HomerWorkflowGraph/README.md) |
 | `HomerSignIn` | [sign-in and session expiry, Fill from Passwords](Sources/HomerSignIn/README.md) |
 | `HomerProcessDetail` | [the process page, command output streaming, Claude transcripts, downloads](Sources/HomerProcessDetail/README.md) |
-| `HomerAgents` | [Agents and Schedules, an agent's page, the Run sheet, an agent's graphs](Sources/HomerAgents/README.md) |
+| `HomerAgents` | [Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor and debug runs](Sources/HomerAgents/README.md) |
 | `HomerContinuations` | [the Continuations page](Sources/HomerContinuations/README.md) |
 | `HomerCosts` | [the Costs page](Sources/HomerCosts/README.md) |
 | `HomerFeature` | [instances, the instance list, polling, the process list, the other pages, questions](Sources/HomerFeature/README.md) |
@@ -93,6 +93,6 @@ Each module's notes are in its own README, next to its sources:
 
 What holds across modules:
 
-- Hybrid by design. The lists, a process's page, an agent's page and the sidebar's pages are native and poll the API; what is left (the file editor, debug runs, the graph of a workflow whose server sends only Mermaid) opens the web console's page in a sheet (`HomerWebPageView`, SwiftUI `WebView`/`WebPage`), with "Open in Browser" beside it. The header's Safari button opens the current tab's page the same way
+- Hybrid by design. The lists, a process's page, an agent's page and editor and the sidebar's pages are native and poll the API; what is left ("New agent", the graph of a workflow whose server sends only Mermaid) opens the web console's page in a sheet (`HomerWebPageView`, SwiftUI `WebView`/`WebPage`), with "Open in Browser" beside it. The header's Safari button opens the current tab's page the same way
 - The API and its JSON are mirrored from the Homer repo: `console/types/homer.ts` (models), `console/lib/api/client.ts` (calls), `app/SERVER.md` (endpoints, auth). Only the fields the lists show are decoded; unknown fields are ignored and unknown statuses decode as `.unknown`, so a newer server keeps working. Timestamps are Unix epoch **seconds**
 - **Sheets have a fixed ideal size.** A sheet sizes itself from its content's ideal size and re-measures when it changes. A lazy stack in a scroll view reports its whole content's height as its ideal height, and that height changes as rows are measured — a long list in a sheet made the sheet re-measure, the stack re-estimate, and the main thread spin for minutes (seen in Bridge Commander's diff viewer). So the process page has a fixed ideal size and a plain stack, long content is a `List` (rows recycle; its ideal size is 0×0) or an `NSTextView`, and a sheet that should resize says so with `.presentationSizing(.fitted)`

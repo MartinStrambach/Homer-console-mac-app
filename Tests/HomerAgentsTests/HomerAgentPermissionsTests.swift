@@ -16,6 +16,7 @@ struct HomerAgentPermissionsTests {
 		#expect(admin.canRun(factory))
 		#expect(admin.canEdit(factory))
 		#expect(!admin.canEdit(baked))
+		#expect(admin.canDebug(baked))
 		#expect(admin.canCreateAgents)
 		#expect(admin.canReloadAgents)
 	}
@@ -31,6 +32,7 @@ struct HomerAgentPermissionsTests {
 		#expect(!user.canEdit(factory))
 		#expect(!user.canRun(deploy))
 		#expect(user.canEdit(deploy))
+		#expect(!user.canDebug(deploy))
 		#expect(user.canCreateAgents)
 		#expect(!user.canReloadAgents)
 	}

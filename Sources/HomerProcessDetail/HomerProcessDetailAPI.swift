@@ -4,7 +4,7 @@ import HomerWorkflowGraph
 
 /// The process page's calls (`getProcess`, `getProcessLangGraph`, `resumeProcess`,
 /// `listArtifacts`, `fetchArtifactContent`/`downloadArtifact` in the console's
-/// `lib/api/client.ts`, and the log tail of `lib/api/streams.ts`).
+/// `lib/api/client.ts`). The log tail is `HomerCore`'s, shared with the agent editor.
 extension HomerAPI {
 	static func process(baseURL: String, id: Int) async throws -> HomerProcess {
 		try await decode(HomerProcess.self, from: send("GET", "/api/v1/status/\(id)", baseURL: baseURL))
@@ -66,55 +66,5 @@ extension HomerAPI {
 			byteCount: data.count,
 			isComplete: isComplete
 		)
-	}
-
-	/// Tails command `executionIndex`'s output from byte `offset` on: the server sends what the
-	/// file holds past it, then new bytes as they are written, and ends once the run has.
-	static func logEvents(
-		baseURL: String,
-		processId: Int,
-		executionIndex: Int,
-		stream: HomerOutputStream,
-		offset: Int
-	) -> AsyncThrowingStream<HomerLogEvent, any Error> {
-		let events = HomerAPI.events(
-			"/api/v1/stream/processes/\(processId)/logs",
-			baseURL: baseURL,
-			queryItems: [
-				URLQueryItem(name: "cmd", value: String(executionIndex)),
-				URLQueryItem(name: "stream", value: stream.apiValue),
-			],
-			// The byte offset to resume from (absent: from the start of the file).
-			headers: [("Last-Event-ID", String(offset))]
-		)
-		return AsyncThrowingStream { continuation in
-			let task = Task {
-				do {
-					for try await event in events {
-						switch event.name {
-						case "log.chunk":
-							struct Chunk: Decodable {
-								var content: String
-							}
-							guard let endOffset = event.id.flatMap(Int.init),
-							      let chunk = try? JSONDecoder().decode(Chunk.self, from: Data(event.data.utf8))
-							else {
-								continue
-							}
-							continuation.yield(.chunk(text: chunk.content, endOffset: endOffset))
-						case "log.end":
-							continuation.yield(.end)
-						default:
-							continue
-						}
-					}
-					continuation.finish()
-				}
-				catch {
-					continuation.finish(throwing: error)
-				}
-			}
-			continuation.onTermination = { _ in task.cancel() }
-		}
 	}
 }

@@ -97,7 +97,7 @@ struct HomerAgentDetailView: View {
 						Label("Edit", systemImage: "pencil")
 					}
 					.buttonStyle(.scaledBordered)
-					.help("Edit \(agent.name)'s files in the web console")
+					.help("Edit \(agent.name)'s files")
 				}
 				if user.canRun(agent) {
 					Button {

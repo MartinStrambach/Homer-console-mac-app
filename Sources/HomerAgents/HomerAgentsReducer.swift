@@ -5,9 +5,9 @@ import HomerCore
 /// The Agents and Schedules pages of one instance: both show the instance's agents, Schedules
 /// only those with a cron. Agents mirrors the console's `agents/page.tsx` (search, Reload, the
 /// agent cards, Run); Schedules its `schedules/page.tsx` (with its Run, which fires the cron
-/// now). An agent's page (`HomerAgentDetailReducer`) shows in place of the page that opened it,
-/// and its workflow graph is also a sheet over the cards; its file editor, debug runs and "New
-/// agent" open in the web console.
+/// now). An agent's page (`HomerAgentDetailReducer`) and its editor (`HomerAgentEditorReducer`)
+/// show in place of the page that opened them, and its workflow graph is also a sheet over the
+/// cards; "New agent" opens in the web console.
 @Reducer
 public struct HomerAgentsReducer: Sendable {
 	/// The console reads the list once and keeps it 5 minutes (`polling.agentsCacheTime`), then
@@ -43,6 +43,10 @@ public struct HomerAgentsReducer: Sendable {
 		/// rather than `@Presents`: its run history polls, and only a plain cancellation ID can be
 		/// stopped from here when the page is hidden or the whole state replaced (signed out).
 		public var detail: HomerAgentDetailReducer.State?
+		/// An agent's editor, shown in place of the page it was opened from — over the agent's
+		/// page, if that opened it. Plain optional state, as `detail` is: its debug runs' output
+		/// is followed until the run ends.
+		public var editor: HomerAgentEditorReducer.State?
 		/// Schedules whose "Run Now" is still waiting on the server.
 		public internal(set) var cronRunsInFlight: Set<HomerAgent.ID> = []
 		/// "Run Now"'s confirmation, and why a fire failed.
@@ -75,6 +79,15 @@ public struct HomerAgentsReducer: Sendable {
 		public var schedules: [HomerAgent] {
 			HomerAgent.schedules(agents)
 		}
+
+		/// What the editor's Back returns to: the agent's page under it, or the page it was
+		/// opened from.
+		var editorBackTitle: String {
+			if let detail, detail.openedFrom == editor?.openedFrom {
+				return detail.agentName
+			}
+			return editor?.openedFrom == .schedules ? "Schedules" : "Agents"
+		}
 	}
 
 	public enum Action: BindableAction {
@@ -101,8 +114,9 @@ public struct HomerAgentsReducer: Sendable {
 		case detail(HomerAgentDetailReducer.Action)
 		case workflowGraphTapped(agentName: String)
 		case workflowGraph(PresentationAction<HomerAgentWorkflowGraphReducer.Action>)
-		/// The console's file editor, which also holds the debug runs.
+		/// The agent's editor: its files and debug runs.
 		case editTapped(agentName: String)
+		case editor(HomerAgentEditorReducer.Action)
 		/// The console's agents page, whose "New agent" dialog creates one.
 		case newAgentTapped
 		case processTapped(processId: Int)
@@ -140,11 +154,15 @@ public struct HomerAgentsReducer: Sendable {
 
 			case let .shown(page):
 				state.shownPage = page
-				return .merge(poll(state), showDetailIfOnScreen(state))
+				let debugTails: Effect<Action> = state.editor?.debug.activeRun != nil ? .send(.editor(.debug(.resumeTails))) : .none
+				return .merge(poll(state), showDetailIfOnScreen(state), debugTails)
 
 			case .refreshTapped:
 				guard state.isShown else {
 					return .none
+				}
+				if state.editor?.openedFrom == state.shownPage {
+					return .merge(poll(state), .send(.editor(.refreshTapped)))
 				}
 				let detail: Effect<Action> = state.detail?.isShown == true ? .send(.detail(.refreshTapped)) : .none
 				return .merge(poll(state), detail)
@@ -152,11 +170,15 @@ public struct HomerAgentsReducer: Sendable {
 			case .hidden:
 				state.shownPage = nil
 				state.detail?.isShown = false
+				// The debug runs' output is followed again when a page comes back.
+				state.editor?.debug.pauseTails()
 				return .merge(
 					.cancel(id: CancelID.polling),
 					.cancel(id: HomerAgentDetailReducer.CancelID.polling),
+					HomerAgentDebugReducer.cancelTails(),
 					// With no page left (the state was replaced), whatever else it runs stops too.
-					state.detail == nil ? HomerAgentDetailReducer.cancelEffects() : .none
+					state.detail == nil ? HomerAgentDetailReducer.cancelEffects() : .none,
+					state.editor == nil ? HomerAgentEditorReducer.cancelEffects() : .none
 				)
 
 			case let .agentsLoaded(.success(agents)):
@@ -165,6 +187,10 @@ public struct HomerAgentsReducer: Sendable {
 				if let agentName = state.detail?.agentName {
 					let agent = state.agents[id: agentName]
 					state.detail?.agent = agent
+				}
+				if let agentName = state.editor?.agentName {
+					let agent = state.agents[id: agentName]
+					state.editor?.update(agent: agent)
 				}
 				state.hasLoaded = true
 				state.loadError = nil
@@ -290,8 +316,41 @@ public struct HomerAgentsReducer: Sendable {
 				return .none
 
 			case let .editTapped(agentName):
-				let path = HomerAgent(name: agentName).consolePath + "/edit"
-				return .send(.delegate(.openWebConsole(path: path, title: "Edit \(agentName)")))
+				state.editor = HomerAgentEditorReducer.State(
+					baseURL: state.baseURL,
+					agentName: agentName,
+					openedFrom: state.shownPage ?? .agents,
+					agent: state.agents[id: agentName]
+				)
+				// The agent's page under it stops polling until the editor goes.
+				var hideDetail: Effect<Action> = .none
+				if state.detail?.isShown == true, state.detail?.openedFrom == state.editor?.openedFrom {
+					state.detail?.isShown = false
+					hideDetail = .cancel(id: HomerAgentDetailReducer.CancelID.polling)
+				}
+				// Another agent's editor may have been following a debug run.
+				return .concatenate(
+					HomerAgentEditorReducer.cancelEffects(),
+					hideDetail,
+					.send(.editor(.start))
+				)
+
+			case .editor(.delegate(.back)):
+				state.editor = nil
+				return .merge(HomerAgentEditorReducer.cancelEffects(), showDetailIfOnScreen(state))
+
+			case .editor(.delegate(.filesChanged)):
+				// The server reloaded the agent; the list shows its new definition.
+				return state.isShown ? poll(state) : .none
+
+			case let .editor(.delegate(.openProcess(processId))):
+				return .send(.processTapped(processId: processId))
+
+			case .editor(.delegate(.unauthorized)):
+				return .send(.delegate(.unauthorized))
+
+			case .editor:
+				return .none
 
 			case .newAgentTapped:
 				return .send(.delegate(.openWebConsole(path: "agents", title: "Agents")))
@@ -367,6 +426,9 @@ public struct HomerAgentsReducer: Sendable {
 		.ifLet(\.detail, action: \.detail) {
 			HomerAgentDetailReducer()
 		}
+		.ifLet(\.editor, action: \.editor) {
+			HomerAgentEditorReducer()
+		}
 		.ifLet(\.$runAgent, action: \.runAgent) {
 			HomerRunAgentReducer()
 		}
@@ -385,9 +447,14 @@ public struct HomerAgentsReducer: Sendable {
 		return error.localizedDescription
 	}
 
-	/// Starts the agent's page if it belongs to the page now on screen and is not running yet.
+	/// Starts the agent's page if it belongs to the page now on screen, is not covered by the
+	/// editor and is not running yet.
 	private func showDetailIfOnScreen(_ state: State) -> Effect<Action> {
-		guard let detail = state.detail, !detail.isShown, detail.openedFrom == state.shownPage else {
+		guard let detail = state.detail,
+		      !detail.isShown,
+		      detail.openedFrom == state.shownPage,
+		      state.editor?.openedFrom != state.shownPage
+		else {
 			return .none
 		}
 		return .send(.detail(.shown))

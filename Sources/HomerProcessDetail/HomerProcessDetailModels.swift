@@ -1,8 +1,8 @@
 import Foundation
 import HomerCore
 
-// The process page's part of the API (`console/types/homer.ts`): a run's artifacts and the live
-// tail of a command's output. Its LangGraph workflow status is `HomerWorkflowGraph`'s.
+// The process page's part of the API (`console/types/homer.ts`): a run's artifacts. The live tail
+// of a command's output is `HomerCore`'s, its LangGraph workflow status `HomerWorkflowGraph`'s.
 
 /// A file in a run's artifacts directory (`GET /api/v1/artifacts/list`).
 public nonisolated struct HomerArtifact: Equatable, Sendable, Identifiable, Decodable {
@@ -39,29 +39,6 @@ public nonisolated struct HomerArtifactContent: Equatable, Sendable {
 		self.text = text
 		self.byteCount = byteCount
 		self.isComplete = isComplete
-	}
-}
-
-/// What the live tail of a command's output (`GET /api/v1/stream/processes/{id}/logs`) sends.
-public nonisolated enum HomerLogEvent: Equatable, Sendable {
-	/// New bytes, and the file's length after them (the SSE event's id).
-	case chunk(text: String, endOffset: Int)
-	/// The process ended and the last bytes were sent.
-	case end
-}
-
-/// A command's output on the server: `stdout` is `cmd_N.out`, `stderr` `cmd_N.err`.
-public nonisolated enum HomerOutputStream: String, CaseIterable, Equatable, Sendable {
-	case stdout
-	case stderr
-
-	/// The log stream's `stream` parameter.
-	var apiValue: String {
-		self == .stdout ? "out" : "err"
-	}
-
-	public var title: String {
-		self == .stdout ? "Stdout" : "Stderr"
 	}
 }
 

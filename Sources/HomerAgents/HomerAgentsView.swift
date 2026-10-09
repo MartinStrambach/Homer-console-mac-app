@@ -19,8 +19,13 @@ package struct HomerAgentsView: View {
 
 	package var body: some View {
 		Group {
-			if store.detail?.openedFrom == .agents,
-			   let detailStore = store.scope(\.detail, action: \.detail)
+			if store.editor?.openedFrom == .agents,
+			   let editorStore = store.scope(\.editor, action: \.editor)
+			{
+				HomerAgentEditorView(store: editorStore, user: user, backTitle: store.editorBackTitle)
+			}
+			else if store.detail?.openedFrom == .agents,
+			        let detailStore = store.scope(\.detail, action: \.detail)
 			{
 				HomerAgentDetailView(store: detailStore, user: user)
 			}
@@ -159,8 +164,13 @@ package struct HomerSchedulesView: View {
 
 	package var body: some View {
 		Group {
-			if store.detail?.openedFrom == .schedules,
-			   let detailStore = store.scope(\.detail, action: \.detail)
+			if store.editor?.openedFrom == .schedules,
+			   let editorStore = store.scope(\.editor, action: \.editor)
+			{
+				HomerAgentEditorView(store: editorStore, user: user, backTitle: store.editorBackTitle)
+			}
+			else if store.detail?.openedFrom == .schedules,
+			        let detailStore = store.scope(\.detail, action: \.detail)
 			{
 				HomerAgentDetailView(store: detailStore, user: user)
 			}

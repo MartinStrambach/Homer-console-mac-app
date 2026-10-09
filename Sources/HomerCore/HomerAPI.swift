@@ -9,6 +9,9 @@ public nonisolated enum HomerAPIError: Error, Equatable, LocalizedError {
 	case forbidden
 	case rateLimited
 	case conflict
+	/// A 422 listing what is wrong (`SchemaErrorResponse`): an agent definition the server's
+	/// schema check refused.
+	case invalid(message: String?, errors: [String])
 	case server(status: Int, message: String?)
 	case unreachable(String)
 	case unexpectedResponse
@@ -23,6 +26,8 @@ public nonisolated enum HomerAPIError: Error, Equatable, LocalizedError {
 			"Too many requests. Please wait a moment and try again."
 		case .conflict:
 			"This question is no longer open — it was answered elsewhere or expired."
+		case let .invalid(message, errors):
+			([message ?? "The server refused the request as invalid."] + errors).joined(separator: "\n")
 		case let .server(status, message):
 			message ?? "The server answered with HTTP \(status)."
 		case let .unreachable(reason):
@@ -323,6 +328,8 @@ package nonisolated enum HomerAPI {
 			throw HomerAPIError.unauthorized
 		case 403:
 			throw HomerAPIError.forbidden
+		case 422 where !(schemaErrors(in: data) ?? []).isEmpty:
+			throw HomerAPIError.invalid(message: errorMessage(in: data), errors: schemaErrors(in: data) ?? [])
 		case _ where refusalsInServerWords && errorMessage(in: data) != nil:
 			throw HomerAPIError.server(status: http.statusCode, message: errorMessage(in: data))
 		case 409:
@@ -351,6 +358,14 @@ package nonisolated enum HomerAPI {
 			var msg: String?
 		}
 		return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.msg
+	}
+
+	/// The `errors` of the backend's `{ "msg": "…", "errors": ["…"] }` 422 body.
+	private static func schemaErrors(in data: Data) -> [String]? {
+		struct ErrorBody: Decodable {
+			var errors: [String]?
+		}
+		return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.errors
 	}
 }
 

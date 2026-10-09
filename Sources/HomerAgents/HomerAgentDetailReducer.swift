@@ -115,7 +115,7 @@ public struct HomerAgentDetailReducer: Sendable {
 			case back
 			/// The Agents page's Run sheet.
 			case run
-			/// The console's file editor.
+			/// The agent's editor.
 			case edit
 			case openProcess(processId: Int)
 			case unauthorized
