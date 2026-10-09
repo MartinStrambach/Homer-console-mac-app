@@ -96,6 +96,8 @@ struct HomerConsoleReducerTests {
 			}
 			$0[HomerClient.self].agentNames = { _ in [] }
 			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
+			$0[HomerClient.self].version = { _ in "1.32.0" }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 		}
 		store.exhaustivity = .off(showSkippedAssertions: false)

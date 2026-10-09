@@ -107,7 +107,7 @@ package struct HomerAgentsView: View {
 					Label("New Agent…", systemImage: "plus")
 				}
 				.buttonStyle(.scaledBordered)
-				.help("Create an agent in the web console")
+				.help("Create an agent and open it in the editor")
 			}
 		}
 		.scaledFont(.callout)
@@ -344,7 +344,7 @@ package struct HomerSchedulesView: View {
 }
 
 /// The sheets of the Agents and Schedules pages, on either one so that an agent's page shown in
-/// place of either can open them: Run, and the workflow graph over the cards.
+/// place of either can open them: Run, the workflow graph over the cards, and New Agent.
 private struct HomerAgentSheets: ViewModifier {
 	@Bindable
 	var store: StoreOf<HomerAgentsReducer>
@@ -359,6 +359,9 @@ private struct HomerAgentSheets: ViewModifier {
 			}
 			.sheet(item: $store.scope(\.$workflowGraph, action: \.workflowGraph)) { graphStore in
 				HomerAgentWorkflowGraphView(store: graphStore)
+			}
+			.sheet(item: $store.scope(\.$newAgent, action: \.newAgent)) { newAgentStore in
+				HomerNewAgentView(store: newAgentStore)
 			}
 	}
 }

@@ -284,14 +284,137 @@ struct HomerAgentsReducerTests {
 		await store.send(.runSheetDismissed)
 	}
 
-	@Test("New Agent opens in the web console")
-	func newAgentInWebConsole() async {
+	@Test("New Agent checks the name, creates the agent, opens its editor and reads the list again")
+	func newAgentOpensEditor() async {
+		let clock = TestClock()
+		let created = LockIsolated<[String]>([])
+		let scout = HomerAgent(name: "scout")
 		let store = TestStore(initialState: loadedState()) {
 			HomerAgentsReducer()
+		} withDependencies: { [factory, nightly] in
+			$0.continuousClock = clock
+			$0[HomerAgentsClient.self].create = { baseURL, name in
+				#expect(baseURL == Self.baseURL)
+				created.withValue { $0.append(name) }
+				return name
+			}
+			$0[HomerAgentsClient.self].agents = { _ in [factory, nightly, scout] }
+			// Answers after the list, so the two arrive in a known order.
+			$0[HomerAgentEditorClient.self].files = { _, _ in
+				try await clock.sleep(for: .seconds(1))
+				return []
+			}
 		}
 
-		await store.send(.newAgentTapped)
-		await store.receive(\.delegate, .openWebConsole(path: "agents", title: "Agents"))
+		await store.send(.newAgentTapped) {
+			$0.newAgent = HomerNewAgentReducer.State(baseURL: Self.baseURL)
+		}
+		await store.send(.newAgent(.presented(.binding(.set(\.name, "my agent"))))) {
+			$0.newAgent?.name = "my agent"
+		}
+		await store.send(.newAgent(.presented(.createTapped))) {
+			$0.newAgent?.nameError = "Use letters, digits, dashes, or underscores only"
+		}
+		await store.send(.newAgent(.presented(.binding(.set(\.name, "scout"))))) {
+			$0.newAgent?.name = "scout"
+			$0.newAgent?.nameError = nil
+		}
+		await store.send(.newAgent(.presented(.createTapped))) {
+			$0.newAgent?.isCreating = true
+		}
+		await store.receive(\.newAgent.createFinished) {
+			$0.newAgent?.isCreating = false
+		}
+		await store.receive(\.newAgent.delegate.created) {
+			$0.newAgent = nil
+		}
+		await store.receive(\.editTapped) {
+			$0.editor = HomerAgentEditorReducer.State(baseURL: Self.baseURL, agentName: "scout", openedFrom: .agents)
+		}
+		await store.receive(\.editor.start) {
+			$0.editor?.isLoadingFiles = true
+		}
+		await store.receive(\.agentsLoaded) {
+			$0.agents = [factory, nightly, scout]
+			$0.editor?.update(agent: scout)
+		}
+		await clock.advance(by: .seconds(1))
+		await store.receive(\.editor.filesLoaded) {
+			$0.editor?.isLoadingFiles = false
+			$0.editor?.files = []
+		}
+
+		#expect(created.value == ["scout"])
+		await store.skipInFlightEffects()
+	}
+
+	@Test("a name already taken stays in the sheet and says so; the server's other refusals in its words")
+	func newAgentRefused() async {
+		let store = TestStore(initialState: loadedState()) {
+			HomerAgentsReducer()
+		} withDependencies: {
+			$0[HomerAgentsClient.self].create = { _, name in
+				if name == "factory" {
+					throw HomerAPIError.server(status: 409, message: "Agent 'factory' already exists")
+				}
+				throw HomerAPIError.server(status: 400, message: "Invalid agent name")
+			}
+		}
+
+		var sheet = HomerNewAgentReducer.State(baseURL: Self.baseURL)
+		sheet.name = "factory"
+		await store.send(.newAgentTapped) {
+			$0.newAgent = HomerNewAgentReducer.State(baseURL: Self.baseURL)
+		}
+		await store.send(.newAgent(.presented(.binding(.set(\.name, "factory"))))) {
+			$0.newAgent = sheet
+		}
+		await store.send(.newAgent(.presented(.createTapped))) {
+			$0.newAgent?.isCreating = true
+		}
+		await store.receive(\.newAgent.createFinished) {
+			$0.newAgent?.isCreating = false
+			$0.newAgent?.createError = "An agent named \"factory\" already exists"
+		}
+		await store.send(.newAgent(.presented(.binding(.set(\.name, "con"))))) {
+			$0.newAgent?.name = "con"
+		}
+		await store.send(.newAgent(.presented(.createTapped))) {
+			$0.newAgent?.isCreating = true
+			$0.newAgent?.createError = nil
+		}
+		await store.receive(\.newAgent.createFinished) {
+			$0.newAgent?.isCreating = false
+			$0.newAgent?.createError = "Invalid agent name"
+		}
+		await store.send(.newAgent(.presented(.cancelTapped)))
+		await store.receive(\.newAgent.dismiss) {
+			$0.newAgent = nil
+		}
+	}
+
+	@Test("a creation answering 401 closes the sheet and asks the instance to sign out")
+	func newAgentUnauthorized() async {
+		var initialState = loadedState()
+		var sheet = HomerNewAgentReducer.State(baseURL: Self.baseURL)
+		sheet.name = "scout"
+		initialState.newAgent = sheet
+		let store = TestStore(initialState: initialState) {
+			HomerAgentsReducer()
+		} withDependencies: {
+			$0[HomerAgentsClient.self].create = { _, _ in throw HomerAPIError.unauthorized }
+		}
+
+		await store.send(.newAgent(.presented(.createTapped))) {
+			$0.newAgent?.isCreating = true
+		}
+		await store.receive(\.newAgent.createFinished) {
+			$0.newAgent?.isCreating = false
+		}
+		await store.receive(\.newAgent.delegate.unauthorized) {
+			$0.newAgent = nil
+		}
+		await store.receive(\.delegate, .unauthorized)
 	}
 
 	@Test("a schedule's Run asks first, fires the cron and refetches the list for its last run")

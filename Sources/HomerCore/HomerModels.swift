@@ -423,16 +423,36 @@ public nonisolated enum HomerQuestionStatus: String, Sendable, Hashable, Decodab
 public nonisolated struct HomerQuestion: Equatable, Sendable, Identifiable, Decodable {
 	/// Present when answering the question starts another agent (ask-and-dispatch).
 	public nonisolated struct Dispatch: Equatable, Sendable, Decodable {
+		/// What `DELETE /api/v1/dispatches/{id}` cancels — the question with it.
+		public var id: Int?
 		public var agentName: String
+		/// `PENDING` until the question is answered, then `DISPATCHING`, `DISPATCHED` or `FAILED`;
+		/// `CANCELLED` once cancelled or expired.
 		public var status: String
 		public var dispatchedProcessId: Int?
 		public var error: String?
 
-		public init(agentName: String, status: String, dispatchedProcessId: Int? = nil, error: String? = nil) {
+		public init(
+			id: Int? = nil,
+			agentName: String,
+			status: String,
+			dispatchedProcessId: Int? = nil,
+			error: String? = nil
+		) {
+			self.id = id
 			self.agentName = agentName
 			self.status = status
 			self.dispatchedProcessId = dispatchedProcessId
 			self.error = error
+		}
+
+		/// The run answering started, once it has.
+		public var startedProcessId: Int? {
+			status.uppercased() == "DISPATCHED" ? dispatchedProcessId : nil
+		}
+
+		public var hasFailed: Bool {
+			status.uppercased() == "FAILED"
 		}
 	}
 
@@ -446,6 +466,7 @@ public nonisolated struct HomerQuestion: Equatable, Sendable, Identifiable, Deco
 	public var status: HomerQuestionStatus
 	public var answer: String?
 	public var createdAt: Double
+	public var answeredAt: Double?
 	public var dispatch: Dispatch?
 
 	public init(
@@ -457,6 +478,7 @@ public nonisolated struct HomerQuestion: Equatable, Sendable, Identifiable, Deco
 		status: HomerQuestionStatus = .open,
 		answer: String? = nil,
 		createdAt: Double,
+		answeredAt: Double? = nil,
 		dispatch: Dispatch? = nil
 	) {
 		self.id = id
@@ -467,6 +489,7 @@ public nonisolated struct HomerQuestion: Equatable, Sendable, Identifiable, Deco
 		self.status = status
 		self.answer = answer
 		self.createdAt = createdAt
+		self.answeredAt = answeredAt
 		self.dispatch = dispatch
 	}
 

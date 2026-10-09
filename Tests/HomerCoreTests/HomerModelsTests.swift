@@ -111,8 +111,31 @@ struct HomerModelsTests {
 				text: "Ship **MOB-1**?",
 				options: ["Yes", "No"],
 				createdAt: 1_700_000_000,
-				dispatch: .init(agentName: "factory-developer", status: "PENDING")
+				dispatch: .init(id: 3, agentName: "factory-developer", status: "PENDING")
 			),
 		])
+	}
+
+	@Test("an answered question decodes its answer and what its dispatch started or why it failed")
+	func decodesAnsweredQuestions() throws {
+		let json = """
+			{ "questions": [
+			  { "id": "q-1", "processId": 7, "agentName": "factory", "text": "Ship?", "options": [],
+			    "status": "ANSWERED", "answer": "Yes", "createdAt": 1700000000, "answeredAt": 1700000060,
+			    "dispatch": { "id": 3, "agentName": "factory-developer", "status": "DISPATCHED",
+			                  "dispatchedProcessId": 99, "error": null } },
+			  { "id": "q-2", "processId": 7, "agentName": "factory", "text": "Deploy?", "options": [],
+			    "status": "ANSWERED", "answer": "No", "createdAt": 1700000000, "answeredAt": 1700000090,
+			    "dispatch": { "id": 4, "agentName": "deployer", "status": "FAILED", "error": "Cost cap reached" } }
+			] }
+			"""
+
+		let questions = try JSONDecoder().decode(HomerQuestionList.self, from: Data(json.utf8)).questions
+
+		#expect(questions.map(\.status) == [.answered, .answered])
+		#expect(questions.map(\.answeredAt) == [1_700_000_060, 1_700_000_090])
+		#expect(questions.map(\.dispatch?.startedProcessId) == [99, nil])
+		#expect(questions.map(\.dispatch?.hasFailed) == [false, true])
+		#expect(questions[1].dispatch?.error == "Cost cap reached")
 	}
 }
