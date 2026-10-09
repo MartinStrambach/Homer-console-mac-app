@@ -32,7 +32,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.martinstrambach.HomerConsole
         # The release version, also the tag `make publish` creates — which is the package's
         # SwiftPM version too, so app and package share one version line.
-        MARKETING_VERSION: 0.2.1
+        MARKETING_VERSION: 0.3.0
         # CFBundleVersion: Sparkle compares versions by it, so it follows MARKETING_VERSION.
         CURRENT_PROJECT_VERSION: $(MARKETING_VERSION)
         GENERATE_INFOPLIST_FILE: YES
