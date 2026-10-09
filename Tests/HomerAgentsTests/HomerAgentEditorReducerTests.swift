@@ -301,15 +301,19 @@ struct HomerAgentEditorReducerTests {
 
 	@Test("a refresh reads the open file again only when it has no changes")
 	func refreshKeepsChanges() async {
+		let clock = TestClock()
 		let reads = LockIsolated(0)
 		var initialState = editorState()
 		initialState.buffer = definition + "# edited\n"
 		let store = TestStore(initialState: initialState) {
 			HomerAgentEditorReducer()
 		} withDependencies: { [definition] in
+			$0.continuousClock = clock
 			$0[HomerAgentEditorClient.self].files = { _, _ in [HomerAgentFile(path: "agent.yaml"), HomerAgentFile(path: "run.sh")] }
+			// Answers after the list, so the two arrive in a known order.
 			$0[HomerAgentEditorClient.self].file = { _, _, _ in
 				reads.withValue { $0 += 1 }
+				try await clock.sleep(for: .seconds(1))
 				return definition + "# from elsewhere\n"
 			}
 		}
@@ -331,6 +335,7 @@ struct HomerAgentEditorReducerTests {
 		await store.receive(\.filesLoaded) {
 			$0.isLoadingFiles = false
 		}
+		await clock.advance(by: .seconds(1))
 		await store.receive(\.fileLoaded) {
 			$0.buffer = definition + "# from elsewhere\n"
 			$0.savedContent = definition + "# from elsewhere\n"
@@ -392,17 +397,23 @@ struct HomerAgentEditorReducerTests {
 
 	@Test("New File creates the file empty and opens it")
 	func newFile() async {
+		let clock = TestClock()
 		let saved = LockIsolated<[String]>([])
 		let store = TestStore(initialState: editorState()) {
 			HomerAgentEditorReducer()
 		} withDependencies: {
+			$0.continuousClock = clock
 			$0[HomerAgentEditorClient.self].saveFile = { _, _, path, content in
 				saved.withValue { $0.append("\(path)=\(content)") }
 			}
 			$0[HomerAgentEditorClient.self].files = { _, _ in
 				[HomerAgentFile(path: "agent.yaml"), HomerAgentFile(path: "prompts/review.md"), HomerAgentFile(path: "run.sh")]
 			}
-			$0[HomerAgentEditorClient.self].file = { _, _, _ in "" }
+			// Answers after the list, so the two arrive in a known order.
+			$0[HomerAgentEditorClient.self].file = { _, _, _ in
+				try await clock.sleep(for: .seconds(1))
+				return ""
+			}
 		}
 
 		await store.send(.newFileTapped) {
@@ -428,6 +439,7 @@ struct HomerAgentEditorReducerTests {
 			$0.isLoadingFiles = false
 			$0.files = [HomerAgentFile(path: "agent.yaml"), HomerAgentFile(path: "prompts/review.md"), HomerAgentFile(path: "run.sh")]
 		}
+		await clock.advance(by: .seconds(1))
 		await store.receive(\.fileLoaded) {
 			$0.savedContent = ""
 		}
