@@ -76,7 +76,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 				Label("Web Console", systemImage: "safari")
 			}
 			.buttonStyle(.scaledBordered)
-			.help("Open this run in the web console — it also draws the workflow graph")
+			.help("Open this run in the web console")
 		}
 		.scaledFont(.callout)
 		.padding(.horizontal)

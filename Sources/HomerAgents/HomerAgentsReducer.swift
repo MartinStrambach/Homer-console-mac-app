@@ -7,7 +7,7 @@ import HomerCore
 /// agent cards, Run); Schedules its `schedules/page.tsx` (with its Run, which fires the cron
 /// now). An agent's page (`HomerAgentDetailReducer`) and its editor (`HomerAgentEditorReducer`)
 /// show in place of the page that opened them, and its workflow graph is also a sheet over the
-/// cards; "New agent" opens in the web console.
+/// cards. "New Agent" is a sheet whose agent opens in its editor.
 @Reducer
 public struct HomerAgentsReducer: Sendable {
 	/// The console reads the list once and keeps it 5 minutes (`polling.agentsCacheTime`), then
@@ -39,6 +39,8 @@ public struct HomerAgentsReducer: Sendable {
 		public var runAgent: HomerRunAgentReducer.State?
 		@Presents
 		public var workflowGraph: HomerAgentWorkflowGraphReducer.State?
+		@Presents
+		public var newAgent: HomerNewAgentReducer.State?
 		/// An agent's page, shown in place of the page it was opened from. Plain optional state
 		/// rather than `@Presents`: its run history polls, and only a plain cancellation ID can be
 		/// stopped from here when the page is hidden or the whole state replaced (signed out).
@@ -117,8 +119,9 @@ public struct HomerAgentsReducer: Sendable {
 		/// The agent's editor: its files and debug runs.
 		case editTapped(agentName: String)
 		case editor(HomerAgentEditorReducer.Action)
-		/// The console's agents page, whose "New agent" dialog creates one.
+		/// The New Agent sheet; the agent it creates opens in its editor.
 		case newAgentTapped
+		case newAgent(PresentationAction<HomerNewAgentReducer.Action>)
 		case processTapped(processId: Int)
 
 		/// The Schedules page's Run: fires the agent now as its cron would, once confirmed.
@@ -353,7 +356,24 @@ public struct HomerAgentsReducer: Sendable {
 				return .none
 
 			case .newAgentTapped:
-				return .send(.delegate(.openWebConsole(path: "agents", title: "Agents")))
+				state.newAgent = HomerNewAgentReducer.State(baseURL: state.baseURL)
+				return .none
+
+			case let .newAgent(.presented(.delegate(.created(agentName)))):
+				state.newAgent = nil
+				// The editor finds the agent in the list once it is read again: the server loaded
+				// it on creation.
+				return .concatenate(
+					.send(.editTapped(agentName: agentName)),
+					state.isShown ? poll(state) : .none
+				)
+
+			case .newAgent(.presented(.delegate(.unauthorized))):
+				state.newAgent = nil
+				return .send(.delegate(.unauthorized))
+
+			case .newAgent:
+				return .none
 
 			case let .processTapped(processId):
 				return .send(.delegate(.openProcess(processId: processId)))
@@ -434,6 +454,9 @@ public struct HomerAgentsReducer: Sendable {
 		}
 		.ifLet(\.$workflowGraph, action: \.workflowGraph) {
 			HomerAgentWorkflowGraphReducer()
+		}
+		.ifLet(\.$newAgent, action: \.newAgent) {
+			HomerNewAgentReducer()
 		}
 		.ifLet(\.$alert, action: \.alert)
 	}

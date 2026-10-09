@@ -3,6 +3,7 @@ import DependenciesTestSupport
 import Foundation
 @testable import HomerContinuations
 @testable import HomerCore
+@testable import HomerCosts
 @testable import HomerFeature
 @testable import HomerProcessDetail
 @testable import HomerSignIn
@@ -215,11 +216,185 @@ struct HomerInstanceReducerTests {
 		await store.skipInFlightEffects()
 	}
 
-	@Test("a process opens its page natively, for the signed-in user")
-	func processOpensDetail() async {
-		let initialState = signedInState()
+	@Test("cancelling an ask-and-dispatch question asks first, cancels its dispatch and re-reads the questions")
+	func cancelQuestion() async {
+		let clock = TestClock()
+		let cancelled = LockIsolated<[Int]>([])
+		var dispatching = question
+		dispatching.dispatch = .init(id: 3, agentName: "factory-developer", status: "PENDING")
+		var initialState = signedInState()
+		initialState.questions = [dispatching]
+		initialState.hasLoadedQuestions = true
+		initialState.answerDrafts = ["q-1": "Maybe"]
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerClient.self].cancelDispatch = { _, id in cancelled.withValue { $0.append(id) } }
+			$0[HomerClient.self].openQuestions = { _ in [] }
+		}
+
+		await store.send(.cancelQuestionTapped(questionId: "q-1")) {
+			$0.questionToCancel = "q-1"
+		}
+		await store.send(.cancelQuestionDismissed) {
+			$0.questionToCancel = nil
+		}
+		#expect(cancelled.value.isEmpty)
+
+		await store.send(.cancelQuestionTapped(questionId: "q-1")) {
+			$0.questionToCancel = "q-1"
+		}
+		await store.send(.cancelQuestionConfirmed) {
+			$0.questionToCancel = nil
+			$0.answeringQuestionIDs = ["q-1"]
+		}
+		await store.receive(\.cancelQuestionFinished) {
+			$0.answeringQuestionIDs = []
+			$0.questions = []
+			$0.answerDrafts = [:]
+		}
+		await store.receive(\.questionsLoaded)
+
+		#expect(cancelled.value == [3])
+		await store.skipInFlightEffects()
+	}
+
+	@Test("a question answered or cancelled first can no longer be cancelled, and says so")
+	func cancelQuestionConflict() async {
+		let clock = TestClock()
+		var dispatching = question
+		dispatching.dispatch = .init(id: 3, agentName: "factory-developer", status: "PENDING")
+		var initialState = signedInState()
+		initialState.questions = [dispatching]
+		initialState.hasLoadedQuestions = true
+		initialState.questionToCancel = "q-1"
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerClient.self].cancelDispatch = { _, _ in throw HomerAPIError.conflict }
+			$0[HomerClient.self].openQuestions = { [dispatching] _ in [dispatching] }
+		}
+
+		await store.send(.cancelQuestionConfirmed) {
+			$0.questionToCancel = nil
+			$0.answeringQuestionIDs = ["q-1"]
+		}
+		await store.receive(\.cancelQuestionFinished) {
+			$0.answeringQuestionIDs = []
+			$0.answerErrors = ["q-1": "This question can no longer be cancelled — it was already answered or cancelled."]
+		}
+		await store.receive(\.questionsLoaded)
+		await store.skipInFlightEffects()
+
+		#expect(
+			HomerInstanceReducer.cancelErrorMessage(HomerAPIError.server(status: 404, message: "Dispatch 3 not found"))
+				== "This question can no longer be cancelled — it was already answered or cancelled."
+		)
+	}
+
+	@Test("the process list reads the sweep while on screen, shown only with a Kubernetes runner")
+	func healthWhileProcessesShown() async {
+		let clock = TestClock()
+		let reads = LockIsolated(0)
+		let sweep = HomerHealth.Sweep(ranAt: 1_700_000_000, scanned: 4, errors: ["pod x: forbidden"])
+		var initialState = signedInState()
+		initialState.isActive = true
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerClient.self].health = { _ in
+				reads.withValue { $0 += 1 }
+				let runners = [HomerHealth.Runner(alias: "local", type: "local")]
+					+ (reads.value == 1 ? [HomerHealth.Runner(alias: "k8s", type: "kubernetes")] : [])
+				return HomerHealth(runners: runners, sweep: sweep)
+			}
+			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+		}
+
+		// The continuations page loads too; this test is about the sweep.
+		store.exhaustivity = .off(showSkippedAssertions: false)
+
+		// Already the page: nothing new to read.
+		await store.send(.pageChanged(.processes))
+		await store.send(.pageChanged(.continuations))
+		#expect(reads.value == 0)
+
+		await store.send(.pageChanged(.processes))
+		await store.receive(\.healthLoaded) {
+			$0.sweep = sweep
+		}
+		await clock.advance(by: HomerInstanceReducer.healthPollInterval)
+		// The Kubernetes runner is gone: nothing to sweep.
+		await store.receive(\.healthLoaded) {
+			$0.sweep = nil
+		}
+		await store.send(.pageChanged(.continuations))
+		await clock.advance(by: HomerInstanceReducer.healthPollInterval * 3)
+		#expect(reads.value == 2)
+		await store.skipInFlightEffects()
+	}
+
+	@Test("coming on screen reads the server's version once")
+	func versionOnActivation() async {
+		let reads = LockIsolated(0)
+		let store = TestStore(initialState: signedInState()) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
+			$0[HomerClient.self].agentNames = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
+			$0[HomerClient.self].version = { _ in
+				reads.withValue { $0 += 1 }
+				return "1.32.0"
+			}
+			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
+		}
+		store.exhaustivity = .off(showSkippedAssertions: false)
+
+		await store.send(.activated)
+		await store.receive(\.versionLoaded) {
+			$0.homerVersion = "1.32.0"
+		}
+		await store.send(.deactivated)
+		await store.send(.activated)
+		await store.skipInFlightEffects()
+		#expect(reads.value == 1)
+	}
+
+	@Test("a process opens its page natively, for the signed-in user, with every question the run asked")
+	func processOpensDetail() async {
+		let clock = TestClock()
+		let answered = HomerQuestion(
+			id: "q-0",
+			processId: 42,
+			agentName: "factory",
+			text: "Branch?",
+			status: .answered,
+			answer: "main",
+			createdAt: 1_700_000_000,
+			answeredAt: 1_700_000_060,
+			dispatch: .init(id: 3, agentName: "builder", status: "DISPATCHED", dispatchedProcessId: 43)
+		)
+		let asked = LockIsolated<[Int]>([])
+		var initialState = signedInState()
+		initialState.isActive = true
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			// The run's own poll is the process page's to test.
+			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
+			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
+			$0[HomerClient.self].runQuestions = { _, processId in
+				asked.withValue { $0.append(processId) }
+				return processId == 42 ? [answered] : []
+			}
 		}
 
 		await store.send(.processTapped(processId: 42)) {
@@ -229,6 +404,57 @@ struct HomerInstanceReducerTests {
 				user: admin
 			)
 		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
+		await store.receive(\.runQuestionsLoaded) {
+			$0.runQuestions = HomerRunQuestions(processId: 42, questions: [answered])
+		}
+		await clock.advance(by: HomerInstanceReducer.questionPollInterval)
+		await store.receive(\.runQuestionsLoaded)
+
+		// Another page covering it stops the poll and keeps the run's questions.
+		await store.send(.pageChanged(.questions)) {
+			$0.page = .questions
+		}
+		await store.receive(\.processDetail.hidden) {
+			$0.processDetail?.isShown = false
+		}
+		await store.receive(\.questionsLoaded) {
+			$0.hasLoadedQuestions = true
+		}
+		await clock.advance(by: HomerInstanceReducer.questionPollInterval)
+		await store.receive(\.questionsLoaded)
+		await store.send(.pageChanged(.processes)) {
+			$0.page = .processes
+		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
+		await store.receive(\.runQuestionsLoaded)
+
+		// Closing the page stops the poll and drops the run's questions.
+		await store.send(.processDetail(.presented(.backTapped)))
+		await store.receive(\.processDetail.delegate) {
+			$0.processDetail = nil
+			$0.runQuestions = nil
+		}
+		await clock.advance(by: HomerInstanceReducer.questionPollInterval * 2)
+		#expect(asked.value == [42, 42, 42])
+		// The instance's questions, and the process list's health now that it is uncovered.
+		await store.skipReceivedActions()
+		await store.skipInFlightEffects()
+	}
+
+	@Test("a run's questions read for a run no longer on screen are dropped")
+	func staleRunQuestions() async {
+		var initialState = signedInState()
+		initialState.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 43, user: admin)
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		}
+
+		await store.send(.runQuestionsLoaded(processId: 42, .success([question])))
 	}
 
 	@Test("a 401 on the process page signs the instance out and closes the page")
@@ -250,17 +476,27 @@ struct HomerInstanceReducerTests {
 	func processDetailQuestionsChanged() async {
 		let clock = TestClock()
 		var initialState = signedInState()
+		initialState.isActive = true
 		initialState.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 42, user: admin)
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].openQuestions = { _ in [] }
+			// Answers after the open questions, so the two arrive in a known order.
+			$0[HomerClient.self].runQuestions = { _, _ in
+				try await clock.sleep(for: .seconds(1))
+				return []
+			}
 		}
 
 		await store.send(.processDetail(.presented(.delegate(.questionsChanged))))
 		await store.receive(\.questionsLoaded) {
 			$0.hasLoadedQuestions = true
+		}
+		await clock.advance(by: .seconds(1))
+		await store.receive(\.runQuestionsLoaded) {
+			$0.runQuestions = HomerRunQuestions(processId: 42, questions: [])
 		}
 		await store.skipInFlightEffects()
 	}
@@ -325,6 +561,7 @@ struct HomerInstanceReducerTests {
 					: HomerProcessPage(processes: [root], total: 1)
 			}
 			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 		}
 
@@ -374,12 +611,16 @@ struct HomerInstanceReducerTests {
 
 	@Test("a retry opens the new run, as the console does")
 	func retryOpensNewRun() async {
-		let initialState = signedInState()
+		var initialState = signedInState()
+		initialState.isActive = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			$0.continuousClock = TestClock()
 			$0[HomerClient.self].retryProcess = { _, _ in 43 }
-			$0[HomerClient.self].sessionCookies = { _ in [] }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
+			$0[HomerClient.self].runQuestions = { _, _ in [] }
+			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
 		}
 
 		await store.send(.retryTapped(processId: 42)) {
@@ -395,6 +636,12 @@ struct HomerInstanceReducerTests {
 				user: admin
 			)
 		}
+		// The list is refreshed too, on an instance on screen.
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.receive(\.runQuestionsLoaded) {
+			$0.runQuestions = HomerRunQuestions(processId: 43, questions: [])
+		}
+		await store.skipInFlightEffects()
 	}
 
 	@Test("a refused kill says why")
@@ -424,6 +671,8 @@ struct HomerInstanceReducerTests {
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }
 			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
+			$0[HomerClient.self].version = { _ in "1.32.0" }
 			$0[HomerContinuationsClient.self].pendingCount = { baseURL in
 				#expect(baseURL == Self.baseURL)
 				return 3

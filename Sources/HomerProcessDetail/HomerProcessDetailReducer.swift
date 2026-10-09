@@ -61,7 +61,8 @@ public struct HomerProcessDetailReducer: Sendable {
 		public var artifacts: HomerArtifactsReducer.State?
 		@Presents
 		public var alert: AlertState<Action.Alert>?
-		/// The run in the web console, for its workflow graph — a sheet over this one.
+		/// The run in the web console — a sheet over this one. It draws the graph of a workflow
+		/// whose server sends only Mermaid, which this page cannot.
 		public var webPage: HomerWebPage?
 
 		public init(baseURL: String, processId: Int, user: HomerUser) {

@@ -156,6 +156,7 @@ struct HomerChildPageTests {
 			$0[HomerProcessDetailClient.self].process = { _, _ in process }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
 			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].runQuestions = { _, _ in [] }
 		}
 
 		await store.send(.continuations(.delegate(.openProcess(processId: 12))))
@@ -170,11 +171,15 @@ struct HomerChildPageTests {
 		await store.receive(\.continuations.hidden) {
 			$0.continuations.isShown = false
 		}
+		await store.receive(\.runQuestionsLoaded) {
+			$0.runQuestions = HomerRunQuestions(processId: 12, questions: [])
+		}
 		await store.receive(\.processDetail.processLoaded) {
 			$0.processDetail?.process = process
 		}
 
-		// Another page shows its own content; the run's page waits, not polling.
+		// Another page shows its own content; the run's page waits, not polling, and keeps its
+		// questions.
 		await store.send(.pageChanged(.questions)) {
 			$0.page = .questions
 		}
@@ -191,12 +196,14 @@ struct HomerChildPageTests {
 		await store.receive(\.processDetail.shown) {
 			$0.processDetail?.isShown = true
 		}
+		await store.receive(\.runQuestionsLoaded)
 		await store.receive(\.processDetail.processLoaded)
 
 		// Back: the page that opened it comes back, and polls again.
 		await store.send(.processDetail(.presented(.backTapped)))
 		await store.receive(\.processDetail.delegate) {
 			$0.processDetail = nil
+			$0.runQuestions = nil
 			$0.shownChildPage = .continuations
 		}
 		await store.receive(\.continuations.shown) {
@@ -208,8 +215,8 @@ struct HomerChildPageTests {
 		await store.skipInFlightEffects()
 	}
 
-	@Test("a page opens the web console in the instance's sheet")
-	func pageOpensWebConsole() async {
+	@Test("the header opens the page's web console in the instance's sheet")
+	func headerOpensWebConsole() async {
 		let initialState = activeState(user: HomerUser(username: "admin", role: "admin"))
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
@@ -217,8 +224,7 @@ struct HomerChildPageTests {
 			$0[HomerClient.self].sessionCookies = { _ in [] }
 		}
 
-		await store.send(.agents(.delegate(.openWebConsole(path: "agents/factory", title: "factory"))))
-		await store.receive(\.openWebConsoleTapped) {
+		await store.send(.openWebConsoleTapped(path: "agents/factory", title: "factory")) {
 			$0.webPage = HomerWebPage(
 				url: URL(string: "https://homer.example.com/agents/factory")!,
 				title: "factory",

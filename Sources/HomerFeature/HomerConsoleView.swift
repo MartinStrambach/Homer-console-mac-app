@@ -100,7 +100,7 @@ public struct HomerConsoleView<Leading: View>: View {
 						action: openCurrentPageInWebConsole
 					)
 
-					accountMenu(user: user, instanceID: instance.id)
+					accountMenu(user: user, instance: instance)
 				}
 			}
 		}
@@ -222,12 +222,16 @@ public struct HomerConsoleView<Leading: View>: View {
 		}
 	}
 
-	private func accountMenu(user: HomerUser, instanceID: HomerInstanceReducer.State.ID) -> some View {
+	/// Who is signed in, the server's version (the console's corner badge), and Sign Out.
+	private func accountMenu(user: HomerUser, instance: HomerInstanceReducer.State) -> some View {
 		Menu {
 			Text("Signed in as \(user.username)")
+			if let version = instance.homerVersion {
+				Text("Homer \(version)")
+			}
 			Divider()
 			Button {
-				store.send(.instances(.element(id: instanceID, action: .signOutTapped)))
+				store.send(.instances(.element(id: instance.id, action: .signOutTapped)))
 			} label: {
 				Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
 			}

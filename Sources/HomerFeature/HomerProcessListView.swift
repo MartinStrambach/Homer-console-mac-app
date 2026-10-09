@@ -5,9 +5,9 @@ import HomerUI
 import SwiftUI
 
 /// The console's processes page (`app/(dashboard)/processes/page.tsx` and
-/// `components/processes/process-table.tsx`): the same filters above the same columns. A row
-/// opens the web console's process page — double-click, the ID, or the context menu — which has
-/// the logs, artifacts and workflow graph.
+/// `components/processes/process-table.tsx`): the same filters above the same columns, under
+/// the orphan pod sweep's banner on an instance with a Kubernetes runner. A row opens its run's
+/// page — double-click, the ID, or the context menu.
 struct HomerProcessListView: View {
 	@Bindable
 	var store: StoreOf<HomerInstanceReducer>
@@ -19,6 +19,10 @@ struct HomerProcessListView: View {
 		VStack(spacing: 0) {
 			filterBar
 			Divider()
+			if let sweep = store.sweep {
+				HomerSweepBanner(sweep: sweep)
+				Divider()
+			}
 			if let error = store.processesError {
 				HomerErrorBanner(message: error)
 				Divider()
@@ -458,5 +462,54 @@ struct HomerFlowSummaryView: View {
 		case .finished:
 			.green
 		}
+	}
+}
+
+/// The last startup sweep of Kubernetes pods no run owns any more (the console's
+/// `sweep-status-banner.tsx`): what it scanned and deleted, and its errors.
+struct HomerSweepBanner: View {
+	let sweep: HomerHealth.Sweep
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(spacing: 6) {
+				Text("Orphan pod sweep:")
+					.fontWeight(.medium)
+				Text(summary)
+					.foregroundStyle(.secondary)
+				Text("@ \(HomerFormat.timestamp(sweep.ranAt))")
+					.scaledFont(.callout, design: .monospaced)
+					.foregroundStyle(.secondary)
+			}
+			ForEach(Array(sweep.errors.enumerated()), id: \.offset) { _, error in
+				Text("• \(error)")
+					.scaledFont(.caption, design: .monospaced)
+					.foregroundStyle(.red)
+					.textSelection(.enabled)
+			}
+		}
+		.scaledFont(.callout)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal)
+		.padding(.vertical, 6)
+		.background((sweep.errors.isEmpty ? Color.secondary : Color.red).opacity(0.08))
+		.help(deletedPods)
+	}
+
+	private var summary: String {
+		var summary = "scanned \(sweep.scanned), deleted \(sweep.deleted.count)"
+		if !sweep.errors.isEmpty {
+			summary += ", errors \(sweep.errors.count)"
+		}
+		return summary
+	}
+
+	/// The pods it deleted, one per line, for the tooltip.
+	private var deletedPods: String {
+		sweep.deleted.map { pod in
+			let run = pod.processId.map { " (run #\($0))" } ?? ""
+			return "\(pod.namespace)/\(pod.name)\(run)"
+		}
+		.joined(separator: "\n")
 	}
 }

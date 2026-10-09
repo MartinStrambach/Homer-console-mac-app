@@ -15,6 +15,9 @@ public struct HomerAgentsClient: Sendable {
 	/// Starts the agent now as its cron would. Admins only. Returns before the run exists, and
 	/// a fire the scheduler refuses starts nothing without failing.
 	public var fireCron: @Sendable (_ baseURL: String, _ agentName: String) async throws -> Void
+	/// Creates an agent directory with a minimal definition and returns the agent's name. Needs
+	/// an `edit` grant on the name.
+	public var create: @Sendable (_ baseURL: String, _ name: String) async throws -> String
 	/// The workflow graph of each of the agent's LangGraph commands; empty when it has none.
 	public var workflowGraphs: @Sendable (_ baseURL: String, _ agentName: String) async throws -> [HomerAgentWorkflowGraph]
 }
@@ -25,6 +28,7 @@ extension HomerAgentsClient: DependencyKey {
 		reload: { try await HomerAPI.reloadAgents(baseURL: $0) },
 		run: { try await HomerAPI.runAgent(baseURL: $0, name: $1, request: $2) },
 		fireCron: { try await HomerAPI.fireAgentCron(baseURL: $0, name: $1) },
+		create: { try await HomerAPI.createAgent(baseURL: $0, name: $1) },
 		workflowGraphs: { try await HomerAPI.agentWorkflowGraphs(baseURL: $0, name: $1) }
 	)
 }
@@ -71,10 +75,27 @@ extension HomerAPI {
 		)
 	}
 
+	/// `POST /api/v1/agents {name}` (`createAgent`): 201 with the name; a name the server
+	/// refuses is a 400 and one already taken a 409, both told in the server's words.
+	static func createAgent(baseURL: String, name: String) async throws -> String {
+		let data = try await send(
+			"POST",
+			"/api/v1/agents",
+			baseURL: baseURL,
+			body: JSONEncoder().encode(["name": name]),
+			refusalsInServerWords: true
+		)
+		return try decode(HomerCreatedAgent.self, from: data).name
+	}
+
 	/// `GET /api/v1/agents/{name}/langgraph`: the server runs `homer_langgraph inspect` over the
 	/// agent's LangGraph commands on every call, so it is asked only when the graph is opened.
 	static func agentWorkflowGraphs(baseURL: String, name: String) async throws -> [HomerAgentWorkflowGraph] {
 		let path = "/api/v1/agents/" + HomerAgent.encodeURIComponent(name) + "/langgraph"
 		return try await decode([HomerAgentWorkflowGraph].self, from: send("GET", path, baseURL: baseURL))
 	}
+}
+
+nonisolated struct HomerCreatedAgent: Decodable {
+	var name: String
 }

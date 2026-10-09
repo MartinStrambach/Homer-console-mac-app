@@ -9,8 +9,9 @@ import HomerSignIn
 
 /// One Homer instance of the console: its session, sign-in form, process list, open
 /// questions and other pages. A process opens natively in `processDetail`, in place of the page
-/// that opened it; what the app does not show natively ("New agent", a workflow graph drawn only
-/// as Mermaid) opens as the web console's own page in `webPage`. `HomerConsoleReducer` holds one per instance, all live at once:
+/// that opened it; a page of the web console (the header's Safari button, the graph of a
+/// workflow whose server sends only Mermaid) opens in `webPage`. `HomerConsoleReducer` holds one
+/// per instance, all live at once:
 /// switching shows another's last data straight away.
 @Reducer
 public struct HomerInstanceReducer: Sendable {
@@ -18,6 +19,10 @@ public struct HomerInstanceReducer: Sendable {
 	static let processPollInterval = HomerProcessListing.pollInterval
 	/// The console's own refresh cadence for questions (`useQuestions`).
 	static let questionPollInterval: Duration = .seconds(30)
+	/// The console reads `/health` again when the processes page mounts once a minute has
+	/// passed (`useHealth`'s `staleTime`); here it is polled at that pace while the page is on
+	/// screen.
+	static let healthPollInterval: Duration = .seconds(60)
 	/// The console's Flow cells refresh on this cadence too (`useFlowSummary`).
 	static let flowSummaryPollInterval: Duration = .seconds(30)
 	/// Root rows whose Flow cell is summarized, in list order. Each cell is one request, so the
@@ -68,8 +73,21 @@ public struct HomerInstanceReducer: Sendable {
 		public internal(set) var hasLoadedQuestions = false
 		public internal(set) var questionsError: String?
 		public internal(set) var answerDrafts: [HomerQuestion.ID: String] = [:]
+		/// Questions with an answer or a cancel still waiting on the server.
 		public internal(set) var answeringQuestionIDs: Set<HomerQuestion.ID> = []
+		/// Why an answer or a cancel failed.
 		public internal(set) var answerErrors: [HomerQuestion.ID: String] = [:]
+		/// The ask-and-dispatch question whose Cancel is waiting to be confirmed.
+		public internal(set) var questionToCancel: HomerQuestion.ID?
+		/// Every question of the run on screen in `processDetail`, open or not; nil until read.
+		public internal(set) var runQuestions: HomerRunQuestions?
+
+		// Health
+		/// The last orphan pod sweep, shown above the process list when the instance has a
+		/// Kubernetes runner.
+		public internal(set) var sweep: HomerHealth.Sweep?
+		/// The server's Homer version (`/heartbeat`), read once.
+		public internal(set) var homerVersion: String?
 
 		// Continuations
 		/// The Continuations page's badge: how many continuations wait for their watched run.
@@ -124,6 +142,21 @@ public struct HomerInstanceReducer: Sendable {
 		/// Whether the console's page shows a run's page instead of its own content.
 		public var showsProcessDetail: Bool {
 			processDetail != nil && processDetailOpenedFrom == page
+		}
+
+		/// Whether the console's page is on screen: this instance is, signed in, and the page is
+		/// not one of the admin-only ones for anyone else — the console offers those only to
+		/// admins.
+		var pageIsOnScreen: Bool {
+			guard let user, isActive else {
+				return false
+			}
+			return !page.isAdminOnly || user.isAdmin
+		}
+
+		/// The run whose page is on screen: its questions are polled exactly then.
+		var processOnScreen: Int? {
+			pageIsOnScreen && showsProcessDetail ? processDetail?.processId : nil
 		}
 
 		public var pendingContinuationCount: Int {
@@ -202,6 +235,16 @@ public struct HomerInstanceReducer: Sendable {
 		case answerDraftChanged(questionId: HomerQuestion.ID, text: String)
 		case answerTapped(questionId: HomerQuestion.ID, answer: String)
 		case answerFinished(questionId: HomerQuestion.ID, Result<Void, any Error>)
+		/// An ask-and-dispatch question's Cancel: asks first, then expires the question so its
+		/// agent never starts.
+		case cancelQuestionTapped(questionId: HomerQuestion.ID)
+		case cancelQuestionConfirmed
+		case cancelQuestionDismissed
+		case cancelQuestionFinished(questionId: HomerQuestion.ID, Result<Void, any Error>)
+		case runQuestionsLoaded(processId: Int, Result<[HomerQuestion], any Error>)
+
+		case healthLoaded(HomerHealth)
+		case versionLoaded(String)
 
 		case pendingContinuationCountLoaded(Int)
 
@@ -226,6 +269,8 @@ public struct HomerInstanceReducer: Sendable {
 		case questionPolling
 		case flowSummaryPolling
 		case continuationCountPolling
+		case runQuestionPolling
+		case healthPolling
 	}
 
 	@Dependency(HomerClient.self)
@@ -304,6 +349,7 @@ public struct HomerInstanceReducer: Sendable {
 					.cancel(id: CancelID.processPolling),
 					.cancel(id: CancelID.flowSummaryPolling),
 					.cancel(id: CancelID.continuationCountPolling),
+					.cancel(id: CancelID.healthPolling),
 					syncShownChildPage(&state)
 				)
 
@@ -322,9 +368,11 @@ public struct HomerInstanceReducer: Sendable {
 				return .none
 
 			case let .pageChanged(page):
+				let previousPage = state.page
 				state.page = page
 				let questions = page == .questions && state.user != nil ? pollQuestions(state) : .none
-				return .merge(questions, syncShownChildPage(&state))
+				let health: Effect<Action> = page == previousPage ? .none : syncHealthPolling(state)
+				return .merge(questions, health, syncShownChildPage(&state))
 
 			case .signOutTapped:
 				let baseURL = state.baseURL
@@ -347,7 +395,9 @@ public struct HomerInstanceReducer: Sendable {
 				return .merge(
 					pollProcesses(state),
 					pollQuestions(state),
+					pollRunQuestions(state),
 					state.isActive ? pollPendingContinuationCount(state) : .none,
+					syncHealthPolling(state),
 					send(state.shownChildPage.map { [ChildPageEvent(page: $0, kind: .refresh)] } ?? []),
 					state.processDetail?.isShown == true ? .send(.processDetail(.presented(.refreshTapped))) : .none
 				)
@@ -512,7 +562,7 @@ public struct HomerInstanceReducer: Sendable {
 					user: user
 				)
 				state.processDetailOpenedFrom = state.page
-				return syncShownChildPage(&state)
+				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
 
 			case .processDetail(.presented(.delegate(.unauthorized))):
 				guard state.user != nil else {
@@ -521,11 +571,11 @@ public struct HomerInstanceReducer: Sendable {
 				return expireSession(&state)
 
 			case .processDetail(.presented(.delegate(.questionsChanged))):
-				return state.user != nil ? pollQuestions(state) : .none
+				return state.user != nil ? .merge(pollQuestions(state), pollRunQuestions(state)) : .none
 
 			case .processDetail(.presented(.delegate(.back))):
 				state.processDetail = nil
-				return syncShownChildPage(&state)
+				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
 
 			case .processDetail:
 				return .none
@@ -577,7 +627,11 @@ public struct HomerInstanceReducer: Sendable {
 				state.questions.remove(id: questionId)
 				state.answerDrafts[questionId] = nil
 				// The answer resumes the process; its row (and open-question count) moves on.
-				return .merge(pollQuestions(state), state.isActive ? pollProcesses(state) : .none)
+				return .merge(
+					pollQuestions(state),
+					pollRunQuestions(state),
+					state.isActive ? pollProcesses(state) : .none
+				)
 
 			case let .answerFinished(questionId, .failure(error)):
 				state.answeringQuestionIDs.remove(questionId)
@@ -585,7 +639,84 @@ public struct HomerInstanceReducer: Sendable {
 					return expireSession(&state)
 				}
 				state.answerErrors[questionId] = error.localizedDescription
-				return error as? HomerAPIError == .conflict ? pollQuestions(state) : .none
+				return error as? HomerAPIError == .conflict ? .merge(pollQuestions(state), pollRunQuestions(state)) : .none
+
+			case let .cancelQuestionTapped(questionId):
+				state.questionToCancel = questionId
+				return .none
+
+			case .cancelQuestionDismissed:
+				state.questionToCancel = nil
+				return .none
+
+			case .cancelQuestionConfirmed:
+				guard let questionId = state.questionToCancel else {
+					return .none
+				}
+				state.questionToCancel = nil
+				let question = state.questions[id: questionId] ?? state.runQuestions?.questions[id: questionId]
+				guard let dispatchId = question?.dispatch?.id,
+				      state.answeringQuestionIDs.insert(questionId).inserted
+				else {
+					return .none
+				}
+				state.answerErrors[questionId] = nil
+				return .run { [baseURL = state.baseURL] send in
+					await send(.cancelQuestionFinished(
+						questionId: questionId,
+						Result { try await homerClient.cancelDispatch(baseURL, dispatchId) }
+					))
+				}
+
+			case let .cancelQuestionFinished(questionId, result):
+				state.answeringQuestionIDs.remove(questionId)
+				switch result {
+				case .success:
+					state.questions.remove(id: questionId)
+					state.answerDrafts[questionId] = nil
+				case let .failure(error):
+					if error as? HomerAPIError == .unauthorized {
+						return expireSession(&state)
+					}
+					state.answerErrors[questionId] = Self.cancelErrorMessage(error)
+				}
+				// Either way the lists are re-read, as the console does once the call settles: a
+				// refusal means they were stale.
+				return .merge(
+					pollQuestions(state),
+					pollRunQuestions(state),
+					state.isActive ? pollProcesses(state) : .none
+				)
+
+			case let .runQuestionsLoaded(processId, .success(questions)):
+				// An answer for a run no longer on screen, or a user since signed out.
+				guard state.user != nil, state.processDetail?.processId == processId else {
+					return .none
+				}
+				state.runQuestions = HomerRunQuestions(
+					processId: processId,
+					questions: IdentifiedArray(questions, uniquingIDsWith: { first, _ in first })
+				)
+				return .none
+
+			case let .runQuestionsLoaded(_, .failure(error)):
+				guard state.user != nil else {
+					return .none
+				}
+				// The run's page falls back to the run's open questions; the other polls report
+				// anything else.
+				return error as? HomerAPIError == .unauthorized ? expireSession(&state) : .none
+
+			case let .healthLoaded(health):
+				guard state.user != nil else {
+					return .none
+				}
+				state.sweep = health.kubernetesSweep
+				return .none
+
+			case let .versionLoaded(version):
+				state.homerVersion = version
+				return .none
 
 			case let .openWebConsoleTapped(path, title):
 				state.webPage = HomerWebPage(
@@ -605,8 +736,6 @@ public struct HomerInstanceReducer: Sendable {
 						return .none
 					}
 					return expireSession(&state)
-				case let .openWebConsole(path, title):
-					return .send(.openWebConsoleTapped(path: path, title: title))
 				case let .openProcess(processId):
 					return .send(.processTapped(processId: processId))
 				case .continuationsChanged:
@@ -629,6 +758,27 @@ public struct HomerInstanceReducer: Sendable {
 		.ifLet(\.$processDetail, action: \.processDetail) {
 			HomerProcessDetailReducer()
 		}
+		// Another run's questions are not this one's: the page shows another run (a retry, a sub
+		// run, Back) or opens or closes.
+		.onChange(of: \.processDetail?.processId) { _, state in
+			state.runQuestions = nil
+			return .none
+		}
+		// The run's page comes on screen or goes (another page, another instance, signing out),
+		// or shows another run: its questions are read again, or no longer polled.
+		.onChange(of: \.processOnScreen) { _, state in
+			pollRunQuestions(state)
+		}
+	}
+
+	/// A cancel someone else's answer or cancel beat says so, as the console does.
+	static func cancelErrorMessage(_ error: any Error) -> String {
+		switch error as? HomerAPIError {
+		case .conflict, .server(status: 404, _):
+			"This question can no longer be cancelled — it was already answered or cancelled."
+		default:
+			error.localizedDescription
+		}
 	}
 
 	// MARK: - Polling
@@ -638,7 +788,9 @@ public struct HomerInstanceReducer: Sendable {
 			pollQuestions(state),
 			state.isActive ? pollProcesses(state) : .none,
 			state.isActive ? pollPendingContinuationCount(state) : .none,
-			state.isActive && state.agentNames.isEmpty ? loadAgentNames(state) : .none
+			state.isActive && state.agentNames.isEmpty ? loadAgentNames(state) : .none,
+			state.isActive && state.homerVersion == nil ? loadVersion(state) : .none,
+			syncHealthPolling(state)
 		)
 	}
 
@@ -647,7 +799,9 @@ public struct HomerInstanceReducer: Sendable {
 			.cancel(id: CancelID.processPolling),
 			.cancel(id: CancelID.questionPolling),
 			.cancel(id: CancelID.flowSummaryPolling),
-			.cancel(id: CancelID.continuationCountPolling)
+			.cancel(id: CancelID.continuationCountPolling),
+			.cancel(id: CancelID.runQuestionPolling),
+			.cancel(id: CancelID.healthPolling)
 		)
 	}
 
@@ -655,6 +809,16 @@ public struct HomerInstanceReducer: Sendable {
 	private func refilter(_ state: inout State) -> Effect<Action> {
 		state.processLimit = Self.pageSize
 		return pollProcesses(state)
+	}
+
+	/// Read once: a server's version changes only with a redeploy, which a relaunch picks up. A
+	/// failure leaves it unknown — the menu just does not say.
+	private func loadVersion(_ state: State) -> Effect<Action> {
+		.run { [baseURL = state.baseURL] send in
+			if let version = try? await homerClient.version(baseURL) {
+				await send(.versionLoaded(version))
+			}
+		}
 	}
 
 	private func loadAgentNames(_ state: State) -> Effect<Action> {
@@ -725,6 +889,43 @@ public struct HomerInstanceReducer: Sendable {
 		.cancellable(id: CancelID.questionPolling, cancelInFlight: true)
 	}
 
+	/// The questions of the run on screen, all of them: its page shows what was answered and what
+	/// the answers started. On the console's questions cadence, while the page is on screen —
+	/// kept, not polled, while another page covers it.
+	private func pollRunQuestions(_ state: State) -> Effect<Action> {
+		guard let processId = state.processOnScreen else {
+			return .cancel(id: CancelID.runQuestionPolling)
+		}
+		return .run { [baseURL = state.baseURL] send in
+			while true {
+				await send(.runQuestionsLoaded(
+					processId: processId,
+					Result { try await homerClient.runQuestions(baseURL, processId) }
+				))
+				try await clock.sleep(for: Self.questionPollInterval)
+			}
+		}
+		.cancellable(id: CancelID.runQuestionPolling, cancelInFlight: true)
+	}
+
+	/// `/health` is read only while the process list, which shows its sweep, is on screen — not
+	/// while a run's page covers it. A failure keeps the last answer: the banner has nowhere to
+	/// say why.
+	private func syncHealthPolling(_ state: State) -> Effect<Action> {
+		guard state.user != nil, state.isActive, state.page == .processes, !state.showsProcessDetail else {
+			return .cancel(id: CancelID.healthPolling)
+		}
+		return .run { [baseURL = state.baseURL] send in
+			while true {
+				if let health = try? await homerClient.health(baseURL) {
+					await send(.healthLoaded(health))
+				}
+				try await clock.sleep(for: Self.healthPollInterval)
+			}
+		}
+		.cancellable(id: CancelID.healthPolling, cancelInFlight: true)
+	}
+
 	/// The console's cadence (`usePendingContinuationsCount`): there is no continuation event to
 	/// listen to. A failure keeps the last count: the badge has nowhere to say why, and the
 	/// other polls report an expired session or an unreachable server.
@@ -757,21 +958,14 @@ public struct HomerInstanceReducer: Sendable {
 
 	// MARK: - Page reducers
 
-	/// Tells the page reducers which of them is on screen: the one the console's page names,
-	/// while this instance is on screen and signed in — or the run's page, when it covers that
-	/// page. The admin-only pages stay hidden for anyone else — the console offers them only to
-	/// admins. `hidingFirst` is a page whose state was just replaced and whose poll must stop
-	/// before anything is shown again.
+	/// Tells the page reducers which of them is on screen: the one the console's page names
+	/// (`pageIsOnScreen`) — or the run's page, when it covers that page. `hidingFirst` is a page
+	/// whose state was just replaced and whose poll must stop before anything is shown again.
 	private func syncShownChildPage(
 		_ state: inout State,
 		hidingFirst hiddenPage: HomerChildPage? = nil
 	) -> Effect<Action> {
-		let pageIsOnScreen = if let user = state.user, state.isActive {
-			!state.page.isAdminOnly || user.isAdmin
-		}
-		else {
-			false
-		}
+		let pageIsOnScreen = state.pageIsOnScreen
 		let showsProcessDetail = pageIsOnScreen && state.showsProcessDetail
 		let page = pageIsOnScreen && !showsProcessDetail ? HomerChildPage(state.page) : nil
 		var events = hiddenPage.map { [ChildPageEvent(page: $0, kind: .hidden)] } ?? []
@@ -867,9 +1061,18 @@ public struct HomerInstanceReducer: Sendable {
 		state.answerDrafts = [:]
 		state.answeringQuestionIDs = []
 		state.answerErrors = [:]
+		state.questionToCancel = nil
+		state.runQuestions = nil
+		state.sweep = nil
 		state.pendingContinuations = nil
 		state.webPage = nil
 		state.processDetail = nil
 		return shownChildPage
 	}
+}
+
+/// Every question one run asked, as its page shows them.
+public struct HomerRunQuestions: Equatable, Sendable {
+	public let processId: Int
+	public var questions: IdentifiedArrayOf<HomerQuestion>
 }
