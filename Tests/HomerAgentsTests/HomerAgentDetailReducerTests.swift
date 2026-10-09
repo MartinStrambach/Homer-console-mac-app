@@ -143,6 +143,10 @@ struct HomerAgentDetailReducerTests {
 		initialState.detail = HomerAgentDetailReducer.State(baseURL: Self.baseURL, agentName: "factory", agent: factory)
 		let store = TestStore(initialState: initialState) {
 			HomerAgentsReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerAgentEditorClient.self].files = { _, _ in [] }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 		}
 
 		await store.send(.detail(.runTapped))
@@ -156,8 +160,33 @@ struct HomerAgentDetailReducerTests {
 
 		await store.send(.detail(.editTapped))
 		await store.receive(\.detail.delegate, .edit)
-		await store.receive(\.editTapped)
-		await store.receive(\.delegate, .openWebConsole(path: "agents/factory/edit", title: "Edit factory"))
+		await store.receive(\.editTapped) {
+			$0.editor = HomerAgentEditorReducer.State(
+				baseURL: Self.baseURL,
+				agentName: "factory",
+				openedFrom: .agents,
+				agent: factory
+			)
+		}
+		await store.receive(\.editor.start) {
+			$0.editor?.isLoadingFiles = true
+		}
+		await store.receive(\.editor.filesLoaded) {
+			$0.editor?.isLoadingFiles = false
+			$0.editor?.files = []
+		}
+		#expect(store.state.editorBackTitle == "factory")
+		await store.send(.editor(.backTapped))
+		await store.receive(\.editor.delegate, .back) {
+			$0.editor = nil
+		}
+		// The agent's page under the editor comes back.
+		await store.receive(\.detail.shown) {
+			$0.detail?.isShown = true
+		}
+		await store.receive(\.detail.runsLoaded) {
+			$0.detail?.hasLoadedRuns = true
+		}
 
 		await store.send(.detail(.processTapped(processId: 7)))
 		await store.receive(\.detail.delegate, .openProcess(processId: 7))
