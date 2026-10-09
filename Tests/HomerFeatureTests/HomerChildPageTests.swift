@@ -147,16 +147,23 @@ struct HomerChildPageTests {
 		let initialState = activeState(user: user)
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerClient.self].runQuestions = { _, _ in [] }
 		}
 
 		await store.send(.continuations(.delegate(.openProcess(processId: 12))))
 		await store.receive(\.processTapped) {
 			$0.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 12, user: user)
 		}
+		await store.receive(\.runQuestionsLoaded) {
+			$0.runQuestions = HomerRunQuestions(processId: 12, questions: [])
+		}
+		await store.skipInFlightEffects()
 	}
 
-	@Test("a page opens the web console in the instance's sheet")
-	func pageOpensWebConsole() async {
+	@Test("the header opens the page's web console in the instance's sheet")
+	func headerOpensWebConsole() async {
 		let initialState = activeState(user: HomerUser(username: "admin", role: "admin"))
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
@@ -164,8 +171,7 @@ struct HomerChildPageTests {
 			$0[HomerClient.self].sessionCookies = { _ in [] }
 		}
 
-		await store.send(.agents(.delegate(.openWebConsole(path: "agents/factory", title: "factory"))))
-		await store.receive(\.openWebConsoleTapped) {
+		await store.send(.openWebConsoleTapped(path: "agents/factory", title: "factory")) {
 			$0.webPage = HomerWebPage(
 				url: URL(string: "https://homer.example.com/agents/factory")!,
 				title: "factory",

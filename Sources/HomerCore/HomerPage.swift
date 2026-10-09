@@ -5,8 +5,6 @@ import Foundation
 public enum HomerPageDelegate: Equatable, Sendable {
 	/// A call answered 401: the instance's session expired, and the instance signs out.
 	case unauthorized
-	/// A page of the web console, e.g. `agents/factory`, opened in the embedded browser sheet.
-	case openWebConsole(path: String, title: String)
 	/// A run's page, opened natively.
 	case openProcess(processId: Int)
 	/// The pending continuations changed here (a cancel): the badge's count is re-read rather

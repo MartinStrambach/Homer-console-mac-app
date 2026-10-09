@@ -143,6 +143,33 @@ package nonisolated enum HomerAPI {
 		_ = try await send("POST", "/api/v1/questions/\(escapedId)/answer", baseURL: baseURL, body: body)
 	}
 
+	/// Every question a run asked, open or not — its page shows the answers and what they
+	/// started.
+	static func questions(baseURL: String, processId: Int) async throws -> [HomerQuestion] {
+		let data = try await send(
+			"GET",
+			"/api/v1/questions",
+			baseURL: baseURL,
+			queryItems: [URLQueryItem(name: "processId", value: String(processId))]
+		)
+		return try decode(HomerQuestionList.self, from: data).questions
+	}
+
+	/// Cancels an ask-and-dispatch question before it is answered: the question expires and its
+	/// agent never starts. A 409 (no longer pending) or 404 (gone, or not the user's) means
+	/// someone answered or cancelled it first.
+	static func cancelDispatch(baseURL: String, id: Int) async throws {
+		_ = try await send("DELETE", "/api/v1/dispatches/\(id)", baseURL: baseURL)
+	}
+
+	static func health(baseURL: String) async throws -> HomerHealth {
+		try await decode(HomerHealth.self, from: send("GET", "/api/v1/health", baseURL: baseURL))
+	}
+
+	static func version(baseURL: String) async throws -> String? {
+		try await decode(HomerHeartbeat.self, from: send("GET", "/api/v1/heartbeat", baseURL: baseURL)).version
+	}
+
 	/// The cookies held for the instance — handed to the embedded web console so it opens signed
 	/// in instead of on its own login page.
 	static func sessionCookies(baseURL: String) -> [HTTPCookie] {

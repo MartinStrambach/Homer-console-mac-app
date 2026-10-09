@@ -16,6 +16,14 @@ public struct HomerClient: Sendable {
 	public var retryProcess: @Sendable (_ baseURL: String, _ id: Int) async throws -> Int
 	public var openQuestions: @Sendable (_ baseURL: String) async throws -> [HomerQuestion]
 	public var answerQuestion: @Sendable (_ baseURL: String, _ id: String, _ answer: String) async throws -> Void
+	/// Every question one run asked, whatever its status.
+	public var runQuestions: @Sendable (_ baseURL: String, _ processId: Int) async throws -> [HomerQuestion]
+	/// Cancels the dispatch of a question not answered yet, expiring the question with it.
+	public var cancelDispatch: @Sendable (_ baseURL: String, _ id: Int) async throws -> Void
+	/// The runners and the last orphan pod sweep.
+	public var health: @Sendable (_ baseURL: String) async throws -> HomerHealth
+	/// The server's Homer version.
+	public var version: @Sendable (_ baseURL: String) async throws -> String?
 	/// The session cookies held for the instance, for the embedded web console.
 	public var sessionCookies: @Sendable (_ baseURL: String) -> [HTTPCookie] = { _ in [] }
 }
@@ -31,6 +39,10 @@ extension HomerClient: DependencyKey {
 		retryProcess: { try await HomerAPI.retryProcess(baseURL: $0, id: $1) },
 		openQuestions: { try await HomerAPI.openQuestions(baseURL: $0) },
 		answerQuestion: { try await HomerAPI.answerQuestion(baseURL: $0, id: $1, answer: $2) },
+		runQuestions: { try await HomerAPI.questions(baseURL: $0, processId: $1) },
+		cancelDispatch: { try await HomerAPI.cancelDispatch(baseURL: $0, id: $1) },
+		health: { try await HomerAPI.health(baseURL: $0) },
+		version: { try await HomerAPI.version(baseURL: $0) },
 		sessionCookies: { HomerAPI.sessionCookies(baseURL: $0) }
 	)
 }
