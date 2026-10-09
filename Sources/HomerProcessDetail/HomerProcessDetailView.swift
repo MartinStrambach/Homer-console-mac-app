@@ -5,30 +5,33 @@ import HomerUI
 import HomerWorkflowGraph
 import SwiftUI
 
-/// A run's page in a sheet (`app/(dashboard)/processes/[id]/page.tsx`): its status and actions,
-/// runner, open questions, status timeline and executions, each execution's output a click away.
-/// The questions are the instance's — answered there, as on the Questions page — so the
-/// instance's view supplies them: `questions` draws the given run's as a `HomerDetailSection`,
-/// or nothing when it has none.
+/// A run's page (`app/(dashboard)/processes/[id]/page.tsx`), in place of the page that opened
+/// it: Back, its status and actions, runner, open questions, status timeline and executions,
+/// each execution's output a click away. `backTitle` names that page — Back returns there once
+/// no earlier run is left to go back to. The questions are the instance's — answered there, as
+/// on the Questions page — so the instance's view supplies them: `questions` draws the given
+/// run's as a `HomerDetailSection`, or nothing when it has none.
 package struct HomerProcessDetailView<Questions: View>: View {
 	@Bindable
 	var store: StoreOf<HomerProcessDetailReducer>
+	let backTitle: String
 	@ViewBuilder
 	let questions: (_ processId: Int) -> Questions
 
-	@Environment(\.dismiss)
-	private var dismiss
-
 	package init(
 		store: StoreOf<HomerProcessDetailReducer>,
+		backTitle: String,
 		@ViewBuilder questions: @escaping (_ processId: Int) -> Questions
 	) {
 		self.store = store
+		self.backTitle = backTitle
 		self.questions = questions
 	}
 
 	package var body: some View {
 		VStack(spacing: 0) {
+			navigationBar
+			Divider()
 			header
 			Divider()
 			if let error = store.loadError {
@@ -38,10 +41,6 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			content
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		}
-		// A fixed ideal size: the page's height changes as executions open and close, and a sheet
-		// that followed it would re-measure itself (README, Sheets).
-		.frame(minWidth: 820, idealWidth: 1040, minHeight: 560, idealHeight: 800)
-		.task { store.send(.task) }
 		.sheet(item: $store.scope(\.$output, action: \.output)) { outputStore in
 			HomerProcessOutputView(store: outputStore)
 		}
@@ -56,19 +55,36 @@ package struct HomerProcessDetailView<Questions: View>: View {
 
 	// MARK: - Header
 
+	/// Back goes to the run shown before this one, if any, else to the page that opened it.
+	private var navigationBar: some View {
+		HStack(spacing: 10) {
+			let previous = store.backStack.last.map { "#\($0)" }
+			Button {
+				store.send(.backTapped)
+			} label: {
+				Label(previous ?? backTitle, systemImage: "chevron.left")
+			}
+			.buttonStyle(.scaledBordered)
+			.keyboardShortcut("[", modifiers: .command)
+			.help("Back to \(previous.map { "run \($0)" } ?? backTitle) (⌘[)")
+
+			Spacer()
+
+			Button {
+				store.send(.openInWebConsoleTapped)
+			} label: {
+				Label("Web Console", systemImage: "safari")
+			}
+			.buttonStyle(.scaledBordered)
+			.help("Open this run in the web console")
+		}
+		.scaledFont(.callout)
+		.padding(.horizontal)
+		.padding(.vertical, 8)
+	}
+
 	private var header: some View {
 		HStack(spacing: 10) {
-			if !store.backStack.isEmpty {
-				Button {
-					store.send(.backTapped)
-				} label: {
-					Label("Back to #\(store.backStack.last ?? 0)", systemImage: "chevron.left")
-				}
-				.buttonStyle(.scaledBordered)
-				.keyboardShortcut("[", modifiers: .command)
-				.help("Back to run #\(store.backStack.last ?? 0) (⌘[)")
-			}
-
 			Text("Process #\(store.processId)")
 				.scaledFont(.title3)
 				.fontWeight(.semibold)
@@ -84,20 +100,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			Spacer()
 
 			actions
-
-			Button {
-				store.send(.openInWebConsoleTapped)
-			} label: {
-				Label("Web Console", systemImage: "safari")
-			}
-			.buttonStyle(.scaledBordered)
-			.help("Open this run in the web console")
-
-			Button("Done") { dismiss() }
-				.buttonStyle(.scaledBorderedProminent)
-				.keyboardShortcut(.cancelAction)
 		}
-		.padding(12)
+		.padding(.horizontal)
+		.padding(.vertical, 12)
 	}
 
 	@ViewBuilder

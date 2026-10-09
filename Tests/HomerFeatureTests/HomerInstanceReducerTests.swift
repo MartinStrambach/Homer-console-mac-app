@@ -3,6 +3,7 @@ import DependenciesTestSupport
 import Foundation
 @testable import HomerContinuations
 @testable import HomerCore
+@testable import HomerCosts
 @testable import HomerFeature
 @testable import HomerProcessDetail
 @testable import HomerSignIn
@@ -380,11 +381,16 @@ struct HomerInstanceReducerTests {
 			dispatch: .init(id: 3, agentName: "builder", status: "DISPATCHED", dispatchedProcessId: 43)
 		)
 		let asked = LockIsolated<[Int]>([])
-		let initialState = signedInState()
+		var initialState = signedInState()
+		initialState.isActive = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = clock
+			// The run's own poll is the process page's to test.
+			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
+			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerClient.self].runQuestions = { _, processId in
 				asked.withValue { $0.append(processId) }
 				return processId == 42 ? [answered] : []
@@ -398,19 +404,46 @@ struct HomerInstanceReducerTests {
 				user: admin
 			)
 		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
 		await store.receive(\.runQuestionsLoaded) {
 			$0.runQuestions = HomerRunQuestions(processId: 42, questions: [answered])
 		}
 		await clock.advance(by: HomerInstanceReducer.questionPollInterval)
 		await store.receive(\.runQuestionsLoaded)
 
+		// Another page covering it stops the poll and keeps the run's questions.
+		await store.send(.pageChanged(.questions)) {
+			$0.page = .questions
+		}
+		await store.receive(\.processDetail.hidden) {
+			$0.processDetail?.isShown = false
+		}
+		await store.receive(\.questionsLoaded) {
+			$0.hasLoadedQuestions = true
+		}
+		await clock.advance(by: HomerInstanceReducer.questionPollInterval)
+		await store.receive(\.questionsLoaded)
+		await store.send(.pageChanged(.processes)) {
+			$0.page = .processes
+		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
+		await store.receive(\.runQuestionsLoaded)
+
 		// Closing the page stops the poll and drops the run's questions.
-		await store.send(.processDetail(.dismiss)) {
+		await store.send(.processDetail(.presented(.backTapped)))
+		await store.receive(\.processDetail.delegate) {
 			$0.processDetail = nil
 			$0.runQuestions = nil
 		}
 		await clock.advance(by: HomerInstanceReducer.questionPollInterval * 2)
-		#expect(asked.value == [42, 42])
+		#expect(asked.value == [42, 42, 42])
+		// The instance's questions, and the process list's health now that it is uncovered.
+		await store.skipReceivedActions()
+		await store.skipInFlightEffects()
 	}
 
 	@Test("a run's questions read for a run no longer on screen are dropped")
@@ -443,6 +476,7 @@ struct HomerInstanceReducerTests {
 	func processDetailQuestionsChanged() async {
 		let clock = TestClock()
 		var initialState = signedInState()
+		initialState.isActive = true
 		initialState.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 42, user: admin)
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
@@ -577,13 +611,16 @@ struct HomerInstanceReducerTests {
 
 	@Test("a retry opens the new run, as the console does")
 	func retryOpensNewRun() async {
-		let initialState = signedInState()
+		var initialState = signedInState()
+		initialState.isActive = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].retryProcess = { _, _ in 43 }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].runQuestions = { _, _ in [] }
+			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
 		}
 
 		await store.send(.retryTapped(processId: 42)) {
@@ -599,6 +636,8 @@ struct HomerInstanceReducerTests {
 				user: admin
 			)
 		}
+		// The list is refreshed too, on an instance on screen.
+		store.exhaustivity = .off(showSkippedAssertions: false)
 		await store.receive(\.runQuestionsLoaded) {
 			$0.runQuestions = HomerRunQuestions(processId: 43, questions: [])
 		}

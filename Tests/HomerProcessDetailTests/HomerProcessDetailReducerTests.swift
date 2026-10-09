@@ -33,13 +33,45 @@ struct HomerProcessDetailReducerTests {
 			}
 		}
 
-		await store.send(.task)
+		await store.send(.shown) {
+			$0.isShown = true
+		}
 		await store.receive(\.processLoaded) {
 			$0.process = finished
 		}
 		await clock.advance(by: .seconds(5))
 		await store.receive(\.processLoaded)
 		await store.skipInFlightEffects()
+	}
+
+	@Test("the page stops polling while the page it covers is off screen, and Refresh waits for it")
+	func hiddenStopsPolling() async {
+		let clock = TestClock()
+		let finished = HomerProcess(id: 7, status: .finished, agentName: "factory")
+		var initialState = state(finished)
+		initialState.isShown = true
+		let store = TestStore(initialState: initialState) {
+			HomerProcessDetailReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerProcessDetailClient.self].process = { _, _ in finished }
+		}
+
+		await store.send(.hidden) {
+			$0.isShown = false
+		}
+		await store.send(.refreshTapped)
+		await clock.advance(by: .seconds(10))
+	}
+
+	@Test("Back on the first run shown goes back to the page that opened it")
+	func backToOpeningPage() async {
+		let store = TestStore(initialState: state()) {
+			HomerProcessDetailReducer()
+		}
+
+		await store.send(.backTapped)
+		await store.receive(\.delegate)
 	}
 
 	@Test("a failed run is asked whether it has a workflow, and Resume is offered when it does")
@@ -106,6 +138,7 @@ struct HomerProcessDetailReducerTests {
 		let status = HomerLangGraphStatus(label: "workflow", threadId: "t-1", nodeStates: ["plan": "done"])
 		var initialState = state(process)
 		initialState.langGraphProbe = .found(label: "workflow")
+		initialState.isShown = true
 		let store = TestStore(initialState: initialState) {
 			HomerProcessDetailReducer()
 		} withDependencies: {
@@ -141,7 +174,9 @@ struct HomerProcessDetailReducerTests {
 		let clock = TestClock()
 		let finished = HomerProcess(id: 7, status: .finished, agentName: "factory")
 		let retried = HomerProcess(id: 8, status: .working, agentName: "factory")
-		let store = TestStore(initialState: state(finished)) {
+		var initialState = state(finished)
+		initialState.isShown = true
+		let store = TestStore(initialState: initialState) {
 			HomerProcessDetailReducer()
 		} withDependencies: {
 			$0.continuousClock = clock

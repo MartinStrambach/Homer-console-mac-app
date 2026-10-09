@@ -141,23 +141,76 @@ struct HomerChildPageTests {
 		await store.receive(\.costs.hidden)
 	}
 
-	@Test("a page opens a run natively")
+	@Test("a page opens a run in its place: the page stops polling, the run's page polls while it is on screen")
 	func pageOpensProcess() async {
 		let user = HomerUser(username: "admin", role: "admin")
-		let initialState = activeState(user: user)
+		let process = HomerProcess(id: 12, status: .finished, agentName: "factory")
+		var initialState = activeState(user: user)
+		initialState.page = .continuations
+		initialState.shownChildPage = .continuations
+		initialState.continuations.isShown = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = TestClock()
+			$0[HomerProcessDetailClient.self].process = { _, _ in process }
+			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in [] }
 			$0[HomerClient.self].runQuestions = { _, _ in [] }
 		}
 
 		await store.send(.continuations(.delegate(.openProcess(processId: 12))))
 		await store.receive(\.processTapped) {
 			$0.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 12, user: user)
+			$0.processDetailOpenedFrom = .continuations
+			$0.shownChildPage = nil
+		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
+		await store.receive(\.continuations.hidden) {
+			$0.continuations.isShown = false
 		}
 		await store.receive(\.runQuestionsLoaded) {
 			$0.runQuestions = HomerRunQuestions(processId: 12, questions: [])
+		}
+		await store.receive(\.processDetail.processLoaded) {
+			$0.processDetail?.process = process
+		}
+
+		// Another page shows its own content; the run's page waits, not polling, and keeps its
+		// questions.
+		await store.send(.pageChanged(.questions)) {
+			$0.page = .questions
+		}
+		await store.receive(\.processDetail.hidden) {
+			$0.processDetail?.isShown = false
+		}
+		await store.receive(\.questionsLoaded) {
+			$0.hasLoadedQuestions = true
+		}
+
+		await store.send(.pageChanged(.continuations)) {
+			$0.page = .continuations
+		}
+		await store.receive(\.processDetail.shown) {
+			$0.processDetail?.isShown = true
+		}
+		await store.receive(\.runQuestionsLoaded)
+		await store.receive(\.processDetail.processLoaded)
+
+		// Back: the page that opened it comes back, and polls again.
+		await store.send(.processDetail(.presented(.backTapped)))
+		await store.receive(\.processDetail.delegate) {
+			$0.processDetail = nil
+			$0.runQuestions = nil
+			$0.shownChildPage = .continuations
+		}
+		await store.receive(\.continuations.shown) {
+			$0.continuations.isShown = true
+		}
+		await store.receive(\.continuations.loaded.success) {
+			$0.continuations.hasLoaded = true
 		}
 		await store.skipInFlightEffects()
 	}

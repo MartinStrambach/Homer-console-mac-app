@@ -8,9 +8,10 @@ import HomerProcessDetail
 import HomerSignIn
 
 /// One Homer instance of the console: its session, sign-in form, process list, open
-/// questions and other pages. A process opens natively in `processDetail`; a page of the web
-/// console (the header's Safari button, the graph of a workflow whose server sends only
-/// Mermaid) opens in `webPage`. `HomerConsoleReducer` holds one per instance, all live at once:
+/// questions and other pages. A process opens natively in `processDetail`, in place of the page
+/// that opened it; a page of the web console (the header's Safari button, the graph of a
+/// workflow whose server sends only Mermaid) opens in `webPage`. `HomerConsoleReducer` holds one
+/// per instance, all live at once:
 /// switching shows another's last data straight away.
 @Reducer
 public struct HomerInstanceReducer: Sendable {
@@ -103,9 +104,12 @@ public struct HomerInstanceReducer: Sendable {
 		var shownChildPage: HomerChildPage?
 
 		public var webPage: HomerWebPage?
-		/// A run's page, over whichever page opened it.
+		/// A run's page, in place of the page that opened it (`processDetailOpenedFrom`) — the
+		/// other pages keep their own content meanwhile. It polls only while that page is on
+		/// screen, and the page it covers does not poll at all.
 		@Presents
 		public var processDetail: HomerProcessDetailReducer.State?
+		public internal(set) var processDetailOpenedFrom: HomerConsoleReducer.Tab = .processes
 
 		/// Whether this instance is the one on screen. Its processes are polled only then; the
 		/// questions of every signed-in instance always, for the badges.
@@ -133,6 +137,26 @@ public struct HomerInstanceReducer: Sendable {
 
 		public var openQuestionCount: Int {
 			user == nil ? 0 : questions.count
+		}
+
+		/// Whether the console's page shows a run's page instead of its own content.
+		public var showsProcessDetail: Bool {
+			processDetail != nil && processDetailOpenedFrom == page
+		}
+
+		/// Whether the console's page is on screen: this instance is, signed in, and the page is
+		/// not one of the admin-only ones for anyone else — the console offers those only to
+		/// admins.
+		var pageIsOnScreen: Bool {
+			guard let user, isActive else {
+				return false
+			}
+			return !page.isAdminOnly || user.isAdmin
+		}
+
+		/// The run whose page is on screen: its questions are polled exactly then.
+		var processOnScreen: Int? {
+			pageIsOnScreen && showsProcessDetail ? processDetail?.processId : nil
 		}
 
 		public var pendingContinuationCount: Int {
@@ -320,8 +344,7 @@ public struct HomerInstanceReducer: Sendable {
 
 			case .deactivated:
 				state.isActive = false
-				// Its polls belong to the instance on screen.
-				state.processDetail = nil
+				// Its polls belong to the instance on screen; a run's page stays, and stops polling.
 				return .merge(
 					.cancel(id: CancelID.processPolling),
 					.cancel(id: CancelID.flowSummaryPolling),
@@ -375,7 +398,8 @@ public struct HomerInstanceReducer: Sendable {
 					pollRunQuestions(state),
 					state.isActive ? pollPendingContinuationCount(state) : .none,
 					syncHealthPolling(state),
-					send(state.shownChildPage.map { [ChildPageEvent(page: $0, kind: .refresh)] } ?? [])
+					send(state.shownChildPage.map { [ChildPageEvent(page: $0, kind: .refresh)] } ?? []),
+					state.processDetail?.isShown == true ? .send(.processDetail(.presented(.refreshTapped))) : .none
 				)
 
 			case let .statusFilterToggled(status):
@@ -537,7 +561,8 @@ public struct HomerInstanceReducer: Sendable {
 					processId: processId,
 					user: user
 				)
-				return .none
+				state.processDetailOpenedFrom = state.page
+				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
 
 			case .processDetail(.presented(.delegate(.unauthorized))):
 				guard state.user != nil else {
@@ -547,6 +572,10 @@ public struct HomerInstanceReducer: Sendable {
 
 			case .processDetail(.presented(.delegate(.questionsChanged))):
 				return state.user != nil ? .merge(pollQuestions(state), pollRunQuestions(state)) : .none
+
+			case .processDetail(.presented(.delegate(.back))):
+				state.processDetail = nil
+				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
 
 			case .processDetail:
 				return .none
@@ -729,11 +758,16 @@ public struct HomerInstanceReducer: Sendable {
 		.ifLet(\.$processDetail, action: \.processDetail) {
 			HomerProcessDetailReducer()
 		}
-		// The run on screen changes when its page opens or closes, and when it shows another run
-		// (a retry, a sub run, Back): its questions are read again for the new one.
+		// Another run's questions are not this one's: the page shows another run (a retry, a sub
+		// run, Back) or opens or closes.
 		.onChange(of: \.processDetail?.processId) { _, state in
 			state.runQuestions = nil
-			return pollRunQuestions(state)
+			return .none
+		}
+		// The run's page comes on screen or goes (another page, another instance, signing out),
+		// or shows another run: its questions are read again, or no longer polled.
+		.onChange(of: \.processOnScreen) { _, state in
+			pollRunQuestions(state)
 		}
 	}
 
@@ -856,9 +890,10 @@ public struct HomerInstanceReducer: Sendable {
 	}
 
 	/// The questions of the run on screen, all of them: its page shows what was answered and what
-	/// the answers started. On the console's questions cadence, while the page is up.
+	/// the answers started. On the console's questions cadence, while the page is on screen —
+	/// kept, not polled, while another page covers it.
 	private func pollRunQuestions(_ state: State) -> Effect<Action> {
-		guard state.user != nil, let processId = state.processDetail?.processId else {
+		guard let processId = state.processOnScreen else {
 			return .cancel(id: CancelID.runQuestionPolling)
 		}
 		return .run { [baseURL = state.baseURL] send in
@@ -873,10 +908,11 @@ public struct HomerInstanceReducer: Sendable {
 		.cancellable(id: CancelID.runQuestionPolling, cancelInFlight: true)
 	}
 
-	/// `/health` is read only while the process list, which shows its sweep, is on screen. A
-	/// failure keeps the last answer: the banner has nowhere to say why.
+	/// `/health` is read only while the process list, which shows its sweep, is on screen — not
+	/// while a run's page covers it. A failure keeps the last answer: the banner has nowhere to
+	/// say why.
 	private func syncHealthPolling(_ state: State) -> Effect<Action> {
-		guard state.user != nil, state.isActive, state.page == .processes else {
+		guard state.user != nil, state.isActive, state.page == .processes, !state.showsProcessDetail else {
 			return .cancel(id: CancelID.healthPolling)
 		}
 		return .run { [baseURL = state.baseURL] send in
@@ -922,22 +958,16 @@ public struct HomerInstanceReducer: Sendable {
 
 	// MARK: - Page reducers
 
-	/// Tells the page reducers which of them is on screen: the one the console's page names,
-	/// while this instance is on screen and signed in. The admin-only pages stay hidden for
-	/// anyone else — the console offers them only to admins. `hidingFirst` is a page whose
-	/// state was just replaced and whose poll must stop before anything is shown again.
+	/// Tells the page reducers which of them is on screen: the one the console's page names
+	/// (`pageIsOnScreen`) — or the run's page, when it covers that page. `hidingFirst` is a page
+	/// whose state was just replaced and whose poll must stop before anything is shown again.
 	private func syncShownChildPage(
 		_ state: inout State,
 		hidingFirst hiddenPage: HomerChildPage? = nil
 	) -> Effect<Action> {
-		let page: HomerChildPage? = if let user = state.user, state.isActive,
-			!state.page.isAdminOnly || user.isAdmin
-		{
-			HomerChildPage(state.page)
-		}
-		else {
-			nil
-		}
+		let pageIsOnScreen = state.pageIsOnScreen
+		let showsProcessDetail = pageIsOnScreen && state.showsProcessDetail
+		let page = pageIsOnScreen && !showsProcessDetail ? HomerChildPage(state.page) : nil
 		var events = hiddenPage.map { [ChildPageEvent(page: $0, kind: .hidden)] } ?? []
 		if page != state.shownChildPage {
 			if let previous = state.shownChildPage {
@@ -948,7 +978,11 @@ public struct HomerInstanceReducer: Sendable {
 				events.append(ChildPageEvent(page: page, kind: .shown))
 			}
 		}
-		return send(events)
+		var processDetail: Effect<Action> = .none
+		if let detail = state.processDetail, detail.isShown != showsProcessDetail {
+			processDetail = .send(.processDetail(.presented(showsProcessDetail ? .shown : .hidden)))
+		}
+		return .merge(send(events), processDetail)
 	}
 
 	private func hide(_ page: HomerChildPage?) -> Effect<Action> {

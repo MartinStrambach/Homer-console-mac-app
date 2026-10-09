@@ -6,7 +6,9 @@ import HomerWorkflowGraph
 /// A process's page (`app/(dashboard)/processes/[id]/page.tsx`), natively: its status and
 /// actions, runner, open questions, status timeline and executions — each with its output, and
 /// the LangGraph workflow's state for the command that runs one. Kept current by polling, as the
-/// list is. A retry, a resume or a sub run's link opens the other run here, and Back returns.
+/// list is, while it is on screen (`shown`/`hidden`, from the instance). A retry, a resume or a
+/// sub run's link opens the other run here, and Back returns — past the first run, to the page
+/// that opened it (`delegate(.back)`).
 @Reducer
 public struct HomerProcessDetailReducer: Sendable {
 	/// The list's cadence: the poll stands in for the console's status stream.
@@ -33,6 +35,8 @@ public struct HomerProcessDetailReducer: Sendable {
 		public internal(set) var processId: Int
 		/// The runs this page showed before, most recent last — Back returns to them.
 		public internal(set) var backStack: [Int] = []
+		/// Between `shown` and `hidden`: the run, and its workflow while that is open, poll.
+		public internal(set) var isShown = false
 		public internal(set) var process: HomerProcess?
 		/// The last refresh's failure; the last good process stays on screen under it.
 		public internal(set) var loadError: String?
@@ -131,8 +135,9 @@ public struct HomerProcessDetailReducer: Sendable {
 
 	public enum Action: BindableAction {
 		case binding(BindingAction<State>)
-		/// The page came on screen; it polls until it is dismissed.
-		case task
+		/// The page came on screen; it polls until `hidden` or until it is closed.
+		case shown
+		case hidden
 		case refreshTapped
 		case processLoaded(processId: Int, Result<HomerProcess, any Error>)
 		case langGraphProbed(processId: Int, currentCommand: String?, Result<HomerLangGraphStatus?, any Error>)
@@ -174,6 +179,8 @@ public struct HomerProcessDetailReducer: Sendable {
 			case unauthorized
 			/// The run's open-question count moved: the instance's questions are stale.
 			case questionsChanged
+			/// Back past the first run shown: the page that opened this one comes back.
+			case back
 		}
 	}
 
@@ -211,8 +218,27 @@ public struct HomerProcessDetailReducer: Sendable {
 		case .binding:
 			return .none
 
-		case .task, .refreshTapped:
+		case .shown:
+			guard !state.isShown else {
+				return .none
+			}
+			state.isShown = true
+			// The run's answer restarts the workflow's poll if it is open.
 			return poll(state)
+
+		case .hidden:
+			guard state.isShown else {
+				return .none
+			}
+			state.isShown = false
+			state.isPollingWorkflow = false
+			return .merge(
+				.cancel(id: CancelID.processPolling),
+				.cancel(id: CancelID.workflowPolling)
+			)
+
+		case .refreshTapped:
+			return state.isShown ? poll(state) : .none
 
 		case let .processLoaded(processId, .success(process)):
 			guard processId == state.processId else {
@@ -379,7 +405,7 @@ public struct HomerProcessDetailReducer: Sendable {
 				// The console takes you to the new run.
 				return .send(.processLinkTapped(processId: newProcessId))
 			case .success(nil):
-				return poll(state)
+				return state.isShown ? poll(state) : .none
 			case let .failure(error):
 				if error as? HomerAPIError == .unauthorized {
 					return .send(.delegate(.unauthorized))
@@ -402,7 +428,7 @@ public struct HomerProcessDetailReducer: Sendable {
 
 		case .backTapped:
 			guard let previous = state.backStack.popLast() else {
-				return .none
+				return .send(.delegate(.back))
 			}
 			return show(previous, &state)
 
@@ -477,7 +503,7 @@ public struct HomerProcessDetailReducer: Sendable {
 		return .merge(
 			.cancel(id: CancelID.probe),
 			.cancel(id: CancelID.workflowPolling),
-			poll(state)
+			state.isShown ? poll(state) : .none
 		)
 	}
 
@@ -510,8 +536,9 @@ public struct HomerProcessDetailReducer: Sendable {
 				.cancellable(id: CancelID.probe, cancelInFlight: true)
 			)
 		}
-		if state.showsWorkflow != state.isPollingWorkflow {
-			state.isPollingWorkflow = state.showsWorkflow
+		let pollsWorkflow = state.isShown && state.showsWorkflow
+		if pollsWorkflow != state.isPollingWorkflow {
+			state.isPollingWorkflow = pollsWorkflow
 			if state.isPollingWorkflow {
 				// Polled whatever the run's status: a parked segment is FINISHED while its thread
 				// moves on in later runs, so the node states still change.
