@@ -73,6 +73,7 @@ public struct HomerConsoleView<Leading: View>: View {
 					.pickerStyle(.segmented)
 					.labelsHidden()
 					.fixedSize()
+					.overlay { openQuestionsDot }
 				}
 			}
 
@@ -133,6 +134,25 @@ public struct HomerConsoleView<Leading: View>: View {
 			0
 		}
 		return count > 0 ? "\(tab.title) (\(count))" : tab.title
+	}
+
+	/// An orange dot on the Questions segment's corner while the instance has open questions.
+	/// A segmented picker cannot color one segment (its `NSSegmentedControl` keeps only a plain
+	/// label), so the dot is drawn over it — placed by the control's own layout, which gives
+	/// every segment an equal share of its width (`fillEqually`).
+	@ViewBuilder
+	private var openQuestionsDot: some View {
+		let tabs = availableTabs
+		if (store.selectedInstance?.openQuestionCount ?? 0) > 0, let index = tabs.firstIndex(of: .questions) {
+			GeometryReader { proxy in
+				let segmentWidth = proxy.size.width / CGFloat(tabs.count)
+				Circle()
+					.fill(.orange)
+					.frame(width: 8, height: 8)
+					.position(x: segmentWidth * CGFloat(index + 1) - 7, y: 5)
+			}
+			.allowsHitTesting(false)
+		}
 	}
 
 	// MARK: - Instances
