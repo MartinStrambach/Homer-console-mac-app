@@ -316,7 +316,7 @@ struct HomerQuestionCard: View {
 	/// (lists, headings) shows as written, which still reads. Images never load: `Text` does not
 	/// fetch them, which is the point — an agent-supplied image URL would otherwise beacon on
 	/// view, the reason the console renders only their alt text.
-	static func markdown(_ text: String) -> AttributedString {
+	nonisolated static func markdown(_ text: String) -> AttributedString {
 		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
 		return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
 	}

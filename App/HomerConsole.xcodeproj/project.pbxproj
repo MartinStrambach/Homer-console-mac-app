@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1E98EE9332D984D63EBCBF35 /* HomerConsoleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */; };
+		2DDD804823AC97FC8D38E9CB /* QuestionNotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F63EBF8857C7425C821859 /* QuestionNotificationDelegate.swift */; };
 		417DA16F00F9EEAC2375AFA9 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */; };
 		658D0A6F7420F92881AF8477 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */; };
 		73BD98B7588AAC1106D18CAC /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D183F5DE98E116F95171BDB2 /* Sparkle */; };
@@ -19,10 +20,11 @@
 /* Begin PBXFileReference section */
 		0681C9FF9A6457FDFB581E58 /* HomerConsole.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomerConsole.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0915455C8FB02C7AA1F01919 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		78EC1207A0E38ECF81B4EF19 /* Homer-console-mac-app */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "Homer-console-mac-app"; path = ..; sourceTree = SOURCE_ROOT; };
+		45F63EBF8857C7425C821859 /* QuestionNotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionNotificationDelegate.swift; sourceTree = "<group>"; };
 		9468CE81A006A3C2B27BE375 /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
 		96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
 		D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		78EC1207A0E38ECF81B4EF19 /* Homer-console-mac-app */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "Homer-console-mac-app"; path = ..; sourceTree = SOURCE_ROOT; };
 		ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomerConsoleApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,6 +63,7 @@
 				0915455C8FB02C7AA1F01919 /* Assets.xcassets */,
 				96A20700AABB2DBB0EA08A4B /* CheckForUpdatesView.swift */,
 				ED5902E2FD40D58CBE9C4D6B /* HomerConsoleApp.swift */,
+				45F63EBF8857C7425C821859 /* QuestionNotificationDelegate.swift */,
 				D7FE7B158FAEDB9ECF553F2D /* SettingsView.swift */,
 				9468CE81A006A3C2B27BE375 /* UpdateSettingsView.swift */,
 			);
@@ -155,6 +158,7 @@
 			files = (
 				417DA16F00F9EEAC2375AFA9 /* CheckForUpdatesView.swift in Sources */,
 				1E98EE9332D984D63EBCBF35 /* HomerConsoleApp.swift in Sources */,
+				2DDD804823AC97FC8D38E9CB /* QuestionNotificationDelegate.swift in Sources */,
 				658D0A6F7420F92881AF8477 /* SettingsView.swift in Sources */,
 				B9296AB92CAE6318FDDFFFA7 /* UpdateSettingsView.swift in Sources */,
 			);

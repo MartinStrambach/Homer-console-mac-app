@@ -64,12 +64,19 @@ public struct HomerConsoleReducer: Sendable {
 		public internal(set) var addInstance: HomerSignInReducer.State?
 		/// Shared by the instances, so a switch keeps the page.
 		public var tab: Tab = .processes
+		/// Whether a question that opens while the console runs is posted to Notification
+		/// Center. The host opts in: it owns the notification center's delegate, which shows a
+		/// banner while the app is frontmost and sends a click back as
+		/// `questionNotificationTapped`.
+		public let notifiesOfNewQuestions: Bool
 
 		/// Whether the console is on screen.
 		var isVisible = false
 		var hasStarted = false
 
-		public init() {}
+		public init(notifiesOfNewQuestions: Bool = false) {
+			self.notifiesOfNewQuestions = notifiesOfNewQuestions
+		}
 
 		public var selectedInstance: HomerInstanceReducer.State? {
 			instances[id: selectedInstanceID]
@@ -102,6 +109,9 @@ public struct HomerConsoleReducer: Sendable {
 		case refreshTapped
 		/// A page of the selected instance's web console, e.g. `processes`.
 		case openWebConsoleTapped(path: String, title: String)
+		/// A question notification was clicked: its instance's Questions page comes on screen.
+		/// `HomerQuestionNotification.instanceID(in:)` reads the instance from the notification.
+		case questionNotificationTapped(instanceID: HomerInstanceReducer.State.ID)
 
 		case addInstance(HomerSignInReducer.Action)
 		case instances(IdentifiedActionOf<HomerInstanceReducer>)
@@ -109,6 +119,9 @@ public struct HomerConsoleReducer: Sendable {
 
 	@Dependency(HomerClient.self)
 	private var homerClient
+
+	@Dependency(HomerNotificationClient.self)
+	private var notificationClient
 
 	public init() {}
 
@@ -210,6 +223,37 @@ public struct HomerConsoleReducer: Sendable {
 			case let .openWebConsoleTapped(path, title):
 				return state.selectedInstance.map { send(.openWebConsoleTapped(path: path, title: title), to: $0.id) }
 					?? .none
+
+			case let .questionNotificationTapped(id):
+				guard state.instances[id: id] != nil else {
+					return .none
+				}
+				state.addInstance = nil
+				state.tab = .questions
+				return .merge(select(id, &state), send(.pageChanged(.questions), to: id))
+
+			case let .instances(.element(id, .delegate(.newQuestions(questions)))):
+				guard state.notifiesOfNewQuestions else {
+					return .none
+				}
+				// The Questions page already shows them to someone looking at it.
+				let isShownOnScreen = state.isVisible && state.addInstance == nil
+					&& state.selectedInstanceID == id && state.tab == .questions
+				let notifications = questions.map {
+					HomerQuestionNotification(
+						instanceID: id,
+						question: $0,
+						instanceName: state.instances.count > 1 ? HomerEndpoint.displayName(of: id) : nil
+					)
+				}
+				return .run { _ in
+					if isShownOnScreen, await notificationClient.isAppActive() {
+						return
+					}
+					for notification in notifications {
+						await notificationClient.post(notification)
+					}
+				}
 
 			case .instances:
 				return .none

@@ -160,6 +160,34 @@ struct HomerInstanceReducerTests {
 		}
 	}
 
+	@Test("a question that opens after the first poll is reported; those already open are not")
+	func newQuestionsReported() async {
+		let later = HomerQuestion(id: "q-2", processId: 8, agentName: "factory", text: "Deploy?", createdAt: 1_700_000_100)
+		var initialState = signedInState()
+		initialState.questions = [question]
+		initialState.hasLoadedQuestions = true
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		}
+
+		await store.send(.questionsLoaded(.success([question, later]))) {
+			$0.questions = [question, later]
+		}
+		await store.receive(\.delegate, .newQuestions([later]))
+	}
+
+	@Test("the questions open at the first poll are not new")
+	func firstQuestionsNotReported() async {
+		let store = TestStore(initialState: signedInState()) {
+			HomerInstanceReducer()
+		}
+
+		await store.send(.questionsLoaded(.success([question]))) {
+			$0.questions = [question]
+			$0.hasLoadedQuestions = true
+		}
+	}
+
 	@Test("an answered question leaves the list and the list is re-read")
 	func answerQuestion() async {
 		let clock = TestClock()

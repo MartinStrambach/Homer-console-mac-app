@@ -3,15 +3,17 @@ import ComposableArchitecture
 import HomerFeature
 import Sparkle
 import SwiftUI
+import UserNotifications
 
 /// The Homer console on its own: the `HomerFeature` package Bridge Commander embeds as a section,
 /// in a window of its own.
 @main
 struct HomerConsoleApp: App {
 	@State
-	private var store = Store(initialState: HomerConsoleReducer.State()) {
-		HomerConsoleReducer()
-	}
+	private var store: StoreOf<HomerConsoleReducer>
+
+	/// Held here: the notification center keeps its delegate weakly.
+	private let notificationDelegate: QuestionNotificationDelegate
 
 	@AppStorage("uiFontSize")
 	private var uiFontSize = TextSize.default
@@ -23,6 +25,17 @@ struct HomerConsoleApp: App {
 		updaterDelegate: nil,
 		userDriverDelegate: nil
 	)
+
+	/// The delegate is set before the first notification can arrive, so a click that launches
+	/// the app still reaches the store.
+	init() {
+		let store = Store(initialState: HomerConsoleReducer.State(notifiesOfNewQuestions: true)) {
+			HomerConsoleReducer()
+		}
+		_store = State(initialValue: store)
+		notificationDelegate = QuestionNotificationDelegate(store: store)
+		UNUserNotificationCenter.current().delegate = notificationDelegate
+	}
 
 	var body: some Scene {
 		Window("Homer Console", id: "main") {

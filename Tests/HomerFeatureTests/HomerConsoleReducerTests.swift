@@ -27,8 +27,8 @@ struct HomerConsoleReducerTests {
 	/// Build the state before handing it to `TestStore`, never inline: its `initialState` is an
 	/// autoclosure evaluated inside the store's own dependencies, so the `@Shared` values written
 	/// here would land in a different app storage than the one the store's expectations read.
-	private func signedInState(selected: String) -> HomerConsoleReducer.State {
-		var state = HomerConsoleReducer.State()
+	private func signedInState(selected: String, notifiesOfNewQuestions: Bool = false) -> HomerConsoleReducer.State {
+		var state = HomerConsoleReducer.State(notifiesOfNewQuestions: notifiesOfNewQuestions)
 		state.$instanceURLs.withLock { $0 = [Self.first, Self.second] }
 		state.$selectedInstanceID.withLock { $0 = selected }
 		state.hasStarted = true
@@ -86,7 +86,8 @@ struct HomerConsoleReducerTests {
 	@Test("only the instance on screen lists its processes; switching hands the polling over")
 	func switchingMovesProcessPolling() async {
 		let listed = LockIsolated<[String]>([])
-		let store = TestStore(initialState: signedInState(selected: Self.first)) {
+		let initialState = signedInState(selected: Self.first)
+		let store = TestStore(initialState: initialState) {
 			HomerConsoleReducer()
 		} withDependencies: {
 			$0.continuousClock = TestClock()
@@ -193,7 +194,8 @@ struct HomerConsoleReducerTests {
 		let signedOut = LockIsolated<[String]>([])
 		@Shared(.homerUsernames) var usernames
 		$usernames.withLock { $0 = [Self.first: "admin", Self.second: "admin"] }
-		let store = TestStore(initialState: signedInState(selected: Self.first)) {
+		let initialState = signedInState(selected: Self.first)
+		let store = TestStore(initialState: initialState) {
 			HomerConsoleReducer()
 		} withDependencies: {
 			$0[HomerClient.self].logout = { baseURL in signedOut.withValue { $0.append(baseURL) } }
@@ -242,5 +244,75 @@ struct HomerConsoleReducerTests {
 			$0.addInstance = nil
 			$0.$selectedInstanceID.withLock { $0 = Self.second }
 		}
+	}
+
+	@Test("a new question is posted to Notification Center, naming its instance when there are several")
+	func newQuestionPosted() async {
+		let posted = LockIsolated<[HomerQuestionNotification]>([])
+		let initialState = signedInState(selected: Self.first, notifiesOfNewQuestions: true)
+		let store = TestStore(initialState: initialState) {
+			HomerConsoleReducer()
+		} withDependencies: {
+			$0[HomerNotificationClient.self].post = { notification in
+				posted.withValue { $0.append(notification) }
+			}
+		}
+
+		await store.send(.instances(.element(id: Self.second, action: .delegate(.newQuestions([question])))))
+		await store.finish()
+
+		#expect(posted.value == [
+			HomerQuestionNotification(instanceID: Self.second, question: question, instanceName: "localhost:8080"),
+		])
+		#expect(posted.value.first?.title == "factory asks")
+		#expect(posted.value.first?.subtitle == "Run #7 · localhost:8080")
+	}
+
+	@Test("a new question is not posted to someone looking at the instance's Questions page")
+	func newQuestionOnScreenNotPosted() async {
+		var initialState = signedInState(selected: Self.first, notifiesOfNewQuestions: true)
+		initialState.isVisible = true
+		initialState.tab = .questions
+		let store = TestStore(initialState: initialState) {
+			HomerConsoleReducer()
+		} withDependencies: {
+			$0[HomerNotificationClient.self].isAppActive = { true }
+		}
+
+		await store.send(.instances(.element(id: Self.first, action: .delegate(.newQuestions([question])))))
+		await store.finish()
+	}
+
+	@Test("without the host opting in, nothing is posted")
+	func newQuestionNotPostedByDefault() async {
+		let initialState = signedInState(selected: Self.first)
+		let store = TestStore(initialState: initialState) {
+			HomerConsoleReducer()
+		}
+
+		await store.send(.instances(.element(id: Self.second, action: .delegate(.newQuestions([question])))))
+		await store.finish()
+	}
+
+	@Test("a clicked question notification shows its instance's Questions page")
+	func questionNotificationTapped() async {
+		let initialState = signedInState(selected: Self.first, notifiesOfNewQuestions: true)
+		let store = TestStore(initialState: initialState) {
+			HomerConsoleReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerClient.self].openQuestions = { _ in [] }
+		}
+
+		await store.send(.questionNotificationTapped(instanceID: Self.second)) {
+			$0.tab = .questions
+			$0.$selectedInstanceID.withLock { $0 = Self.second }
+			$0.instances[id: Self.second]?.page = .questions
+		}
+		await store.receive(\.instances[id: Self.second].pageChanged)
+		await store.receive(\.instances[id: Self.second].questionsLoaded) {
+			$0.instances[id: Self.second]?.hasLoadedQuestions = true
+		}
+		await store.skipInFlightEffects()
 	}
 }

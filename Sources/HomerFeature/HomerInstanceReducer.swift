@@ -219,6 +219,8 @@ public struct HomerInstanceReducer: Sendable {
 		case cancelQuestionFinished(questionId: HomerQuestion.ID, Result<Void, any Error>)
 		case runQuestionsLoaded(processId: Int, Result<[HomerQuestion], any Error>)
 
+		case delegate(Delegate)
+
 		case healthLoaded(HomerHealth)
 		case versionLoaded(String)
 
@@ -236,6 +238,12 @@ public struct HomerInstanceReducer: Sendable {
 
 		public enum Alert: Equatable, Sendable {
 			case killConfirmed(processId: Int)
+		}
+
+		public enum Delegate: Equatable, Sendable {
+			/// Questions that opened since the last poll — never those already open at the first
+			/// one after a launch or sign-in. The console may post them to Notification Center.
+			case newQuestions([HomerQuestion])
 		}
 	}
 
@@ -555,6 +563,9 @@ public struct HomerInstanceReducer: Sendable {
 				guard state.user != nil else {
 					return .none
 				}
+				let newQuestions = state.hasLoadedQuestions
+					? questions.filter { state.questions[id: $0.id] == nil }
+					: []
 				state.questions = IdentifiedArray(questions, uniquingIDsWith: { first, _ in first })
 				state.hasLoadedQuestions = true
 				state.questionsError = nil
@@ -563,7 +574,7 @@ public struct HomerInstanceReducer: Sendable {
 				let openIDs = Set(state.questions.ids)
 				state.answerDrafts = state.answerDrafts.filter { openIDs.contains($0.key) }
 				state.answerErrors = state.answerErrors.filter { openIDs.contains($0.key) }
-				return .none
+				return newQuestions.isEmpty ? .none : .send(.delegate(.newQuestions(newQuestions)))
 
 			case let .questionsLoaded(.failure(error)):
 				guard state.user != nil else {
@@ -721,7 +732,7 @@ public struct HomerInstanceReducer: Sendable {
 				state.pendingContinuations = count
 				return .none
 
-			case .continuations, .agents, .costs:
+			case .continuations, .agents, .costs, .delegate:
 				return .none
 			}
 		}
