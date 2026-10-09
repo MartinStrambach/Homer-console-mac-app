@@ -171,6 +171,11 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		else if store.loadError == nil {
 			ProgressView("Loading process details…")
 		}
+		else {
+			// The banner above says why; something still has to fill the page, or the stack
+			// shrinks to its header and the window centres it.
+			Color.clear
+		}
 	}
 
 	private func summary(_ process: HomerProcess) -> some View {
