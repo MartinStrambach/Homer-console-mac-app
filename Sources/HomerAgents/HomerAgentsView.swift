@@ -4,13 +4,17 @@ import HomerCore
 import HomerUI
 import SwiftUI
 
-/// The Agents page of the selected instance (the console's `agents/page.tsx`): a search over
-/// the agents' cards, Reload for admins, and Run. `user` decides what it offers (Run, Edit, New
-/// Agent, Reload, by the user's grants); the server checks every call again.
+/// The Agents page of the selected instance (the console's `agents/page.tsx`): a search (⌘F)
+/// and a scheduled / not scheduled filter over the agents' cards, Reload for admins, and Run.
+/// `user` decides what it offers (Run, Edit, New Agent, Reload, by the user's grants); the
+/// server checks every call again.
 package struct HomerAgentsView: View {
 	@Bindable
 	var store: StoreOf<HomerAgentsReducer>
 	let user: HomerUser
+
+	@FocusState
+	private var isSearchFocused: Bool
 
 	package init(store: StoreOf<HomerAgentsReducer>, user: HomerUser) {
 		self.store = store
@@ -63,6 +67,10 @@ package struct HomerAgentsView: View {
 					.foregroundStyle(.secondary)
 				TextField("Search agents…", text: $store.searchText)
 					.textFieldStyle(.plain)
+					.focused($isSearchFocused)
+					.onExitCommand {
+						store.send(.binding(.set(\.searchText, "")))
+					}
 				if !store.searchText.isEmpty {
 					Button {
 						store.send(.binding(.set(\.searchText, "")))
@@ -78,6 +86,25 @@ package struct HomerAgentsView: View {
 			.padding(.vertical, 5)
 			.background(.fill.tertiary, in: Capsule())
 			.frame(maxWidth: 360)
+			.help("Search agents by name (⌘F); Esc clears")
+			.background {
+				// Only while the cards are on screen: an agent's page and the editor have their own ⌘F.
+				Button("") { isSearchFocused = true }
+					.keyboardShortcut("f", modifiers: .command)
+					.hidden()
+			}
+
+			Picker("Show", selection: $store.scheduleFilter) {
+				let counts = store.agentCounts
+				ForEach(HomerAgentsReducer.ScheduleFilter.allCases, id: \.self) { filter in
+					Text("\(filter.title) \(counts[filter, default: 0])")
+						.tag(filter)
+				}
+			}
+			.pickerStyle(.segmented)
+			.labelsHidden()
+			.fixedSize()
+			.help("Show every agent, or only those with or without a cron")
 
 			Spacer()
 
@@ -120,7 +147,7 @@ package struct HomerAgentsView: View {
 			EmptyStateView(
 				title: "No Agents",
 				systemImage: "square.stack.3d.up",
-				description: store.searchText.isEmpty ? "No agents available." : "No agents match your search."
+				description: emptyDescription
 			)
 		}
 		else {
@@ -136,6 +163,26 @@ package struct HomerAgentsView: View {
 				}
 				.padding()
 			}
+		}
+	}
+
+	private var emptyDescription: String {
+		switch (store.searchText.isEmpty, store.scheduleFilter) {
+		case (true, .all): "No agents available."
+		case (true, .scheduled): "No agent runs on a cron."
+		case (true, .unscheduled): "Every agent runs on a cron."
+		case (false, .all): "No agents match your search."
+		case (false, _): "No agents match your search and filter."
+		}
+	}
+}
+
+extension HomerAgentsReducer.ScheduleFilter {
+	fileprivate var title: String {
+		switch self {
+		case .all: "All"
+		case .scheduled: "Scheduled"
+		case .unscheduled: "Not Scheduled"
 		}
 	}
 }

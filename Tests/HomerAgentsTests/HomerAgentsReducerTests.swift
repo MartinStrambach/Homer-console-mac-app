@@ -123,6 +123,19 @@ struct HomerAgentsReducerTests {
 		#expect(state.schedules == [nightly])
 	}
 
+	@Test("the schedule filter narrows the cards, and its counts follow the search")
+	func scheduleFilter() {
+		var state = loadedState()
+		#expect(state.agentCounts == [.all: 2, .scheduled: 1, .unscheduled: 1])
+		state.scheduleFilter = .scheduled
+		#expect(state.filteredAgents == [nightly])
+		state.scheduleFilter = .unscheduled
+		#expect(state.filteredAgents == [factory])
+		state.searchText = "night"
+		#expect(state.filteredAgents.isEmpty)
+		#expect(state.agentCounts == [.all: 1, .scheduled: 1, .unscheduled: 0])
+	}
+
 	@Test("Reload shows what changed and reads the list again")
 	func reload() async {
 		let clock = TestClock()

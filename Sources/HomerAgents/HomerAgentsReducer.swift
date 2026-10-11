@@ -22,6 +22,22 @@ public struct HomerAgentsReducer: Sendable {
 		case schedules
 	}
 
+	/// The Agents page's filter beside the search: every agent, or only those with or without a
+	/// cron. The console has none; its "Scheduled" badge is all it says.
+	public enum ScheduleFilter: CaseIterable, Hashable, Sendable {
+		case all
+		case scheduled
+		case unscheduled
+
+		func includes(_ agent: HomerAgent) -> Bool {
+			switch self {
+			case .all: true
+			case .scheduled: agent.cron != nil
+			case .unscheduled: agent.cron == nil
+			}
+		}
+	}
+
 	@ObservableState
 	public struct State: Equatable {
 		public let baseURL: String
@@ -32,6 +48,7 @@ public struct HomerAgentsReducer: Sendable {
 		public internal(set) var loadError: String?
 		/// The console's search: agents whose name contains it, ignoring case.
 		public var searchText = ""
+		public var scheduleFilter: ScheduleFilter = .all
 		public internal(set) var isReloading = false
 		public internal(set) var reloadResult: HomerAgentReloadResult?
 		public internal(set) var reloadError: String?
@@ -68,8 +85,20 @@ public struct HomerAgentsReducer: Sendable {
 			shownPage != nil
 		}
 
-		/// The Agents page's cards.
+		/// The Agents page's cards: those the search and the filter both let through.
 		public var filteredAgents: [HomerAgent] {
+			searchedAgents.filter(scheduleFilter.includes)
+		}
+
+		/// How many cards each filter would show with the current search — the filter's counts.
+		public var agentCounts: [ScheduleFilter: Int] {
+			let searched = searchedAgents
+			return Dictionary(uniqueKeysWithValues: ScheduleFilter.allCases.map { filter in
+				(filter, searched.count(where: filter.includes))
+			})
+		}
+
+		private var searchedAgents: [HomerAgent] {
 			let search = searchText.lowercased()
 			guard !search.isEmpty else {
 				return Array(agents)
