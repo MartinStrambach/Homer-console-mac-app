@@ -16,7 +16,6 @@ struct HomerAgentDetailView: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			navigationBar
-			Divider()
 			if let agent = store.agent {
 				header(agent)
 				Divider()
@@ -70,25 +69,43 @@ struct HomerAgentDetailView: View {
 		}
 		.scaledFont(.callout)
 		.padding(.horizontal)
-		.padding(.vertical, 8)
+		.padding(.top, 8)
 	}
 
+	/// The agent's icon, name, description and schedule with Edit and Run; its figures; and the
+	/// section picker.
 	private func header(_ agent: HomerAgent) -> some View {
-		VStack(alignment: .leading, spacing: 10) {
-			HStack(alignment: .firstTextBaseline, spacing: 10) {
-				Text(agent.name)
-					.scaledFont(.title2)
-					.fontWeight(.bold)
-					.textSelection(.enabled)
-				if agent.cron != nil {
-					Label("Scheduled", systemImage: "clock")
-						.scaledFont(.caption)
-						.padding(.horizontal, 6)
-						.padding(.vertical, 1)
-						.background(Color.secondary.opacity(0.15), in: Capsule())
+		VStack(alignment: .leading, spacing: 14) {
+			HStack(alignment: .top, spacing: 14) {
+				HomerIconTile(
+					systemImage: agent.cron == nil ? "square.stack.3d.up.fill" : "calendar.badge.clock",
+					color: agent.cron == nil ? .accentColor : .purple,
+					size: 44
+				)
+
+				VStack(alignment: .leading, spacing: 4) {
+					HStack(alignment: .firstTextBaseline, spacing: 8) {
+						Text(agent.name)
+							.scaledFont(.title2)
+							.fontWeight(.bold)
+							.textSelection(.enabled)
+						if agent.cron != nil {
+							HomerPill("Scheduled", color: .purple, systemImage: "clock")
+						}
+					}
+					if let description = agent.description, !description.isEmpty {
+						Text(description)
+							.scaledFont(.body)
+							.foregroundStyle(.secondary)
+							.textSelection(.enabled)
+							.fixedSize(horizontal: false, vertical: true)
+					}
+					if let cron = agent.cron {
+						cronLine(cron)
+					}
 				}
 
-				Spacer()
+				Spacer(minLength: 12)
 
 				if user.canEdit(agent) {
 					Button {
@@ -109,16 +126,8 @@ struct HomerAgentDetailView: View {
 					.help("Run agent \(agent.name)")
 				}
 			}
-			if let description = agent.description, !description.isEmpty {
-				Text(description)
-					.scaledFont(.body)
-					.foregroundStyle(.secondary)
-					.textSelection(.enabled)
-					.fixedSize(horizontal: false, vertical: true)
-			}
-			if let cron = agent.cron {
-				cronLine(cron)
-			}
+
+			stats(agent)
 
 			Picker("Section", selection: $store.section.sending(\.sectionSelected)) {
 				Text(store.hasLoadedRuns ? "Runs (\(store.runTotal))" : "Runs")
@@ -133,14 +142,41 @@ struct HomerAgentDetailView: View {
 			.fixedSize()
 		}
 		.padding(.horizontal)
-		.padding(.vertical, 12)
+		.padding(.top, 10)
+		.padding(.bottom, 12)
 	}
 
-	/// The schedule, which the console's page shows only as the badge: the cron, its next run
-	/// counting down, and the last run, opening the run it started.
+	/// Its runs and what the listed ones cost, its parameters, and its next scheduled run.
+	private func stats(_ agent: HomerAgent) -> some View {
+		HomerStatGrid {
+			HomerStat("Runs", systemImage: "play.circle") {
+				Text(store.hasLoadedRuns ? "\(store.runTotal)" : "—")
+					.monospacedDigit()
+			}
+			HomerStat("Cost of listed runs", systemImage: "dollarsign.circle") {
+				Text(store.hasLoadedRuns ? HomerFormat.cost(store.listedCostUsd) : "—")
+					.monospacedDigit()
+			}
+			.help("What the listed runs cost together")
+			HomerStat("Parameters", systemImage: "slider.horizontal.3") {
+				Text("\(agent.inputs.count)")
+					.monospacedDigit()
+			}
+			if let nextRunAt = agent.cron?.nextRunAt {
+				HomerStat("Next run", systemImage: "clock") {
+					HomerScheduleCountdownText(epochSeconds: nextRunAt)
+				}
+				.help(HomerFormat.timestamp(nextRunAt))
+			}
+		}
+	}
+
+	/// The schedule, which the console's page shows only as the badge: the cron and the last
+	/// run, opening the run it started. The next run is a stat tile.
 	private func cronLine(_ cron: HomerAgent.Cron) -> some View {
 		HStack(spacing: 12) {
 			HStack(spacing: 4) {
+				Image(systemName: "clock")
 				Text(cron.expression)
 					.scaledFont(.callout, design: .monospaced)
 					.textSelection(.enabled)
@@ -148,15 +184,8 @@ struct HomerAgentDetailView: View {
 					Text("(\(cron.timezone))")
 				}
 			}
-			if let nextRunAt = cron.nextRunAt {
-				HStack(spacing: 4) {
-					Text("Next:")
-					HomerScheduleCountdownText(epochSeconds: nextRunAt)
-				}
-				.help(HomerFormat.timestamp(nextRunAt))
-			}
 			HStack(spacing: 4) {
-				Text("Last:")
+				Text("Last run:")
 				if let lastRunAt = cron.lastRunAt {
 					if let processId = cron.lastRunProcessId {
 						Button(HomerFormat.timestamp(lastRunAt)) {
@@ -203,20 +232,30 @@ struct HomerAgentDetailView: View {
 		}
 		else {
 			ScrollView {
-				VStack(alignment: .leading, spacing: 14) {
+				VStack(alignment: .leading, spacing: 12) {
 					Text("Inputs accepted when running this agent")
 						.scaledFont(.callout)
 						.foregroundStyle(.secondary)
-					ForEach(agent.inputs) { input in
-						VStack(alignment: .leading, spacing: 3) {
-							HStack(spacing: 6) {
-								HomerAgentInputHeader(input: input)
-								if input.source != .unknown {
-									HomerAgentBadge(text: input.source.rawValue)
-										.help("Sent as a \(input.source.rawValue) value")
+					LazyVGrid(
+						columns: [GridItem(.adaptive(minimum: 280), spacing: 12, alignment: .top)],
+						alignment: .leading,
+						spacing: 12
+					) {
+						ForEach(agent.inputs) { input in
+							VStack(alignment: .leading, spacing: 6) {
+								HStack(spacing: 6) {
+									HomerAgentInputHeader(input: input)
+									Spacer(minLength: 0)
+									if input.source != .unknown {
+										HomerAgentBadge(text: input.source.rawValue)
+											.help("Sent as a \(input.source.rawValue) value")
+									}
 								}
+								HomerAgentInputDetails(input: input)
 							}
-							HomerAgentInputDetails(input: input)
+							.padding(12)
+							.frame(maxWidth: .infinity, alignment: .topLeading)
+							.homerCard(cornerRadius: HomerRadius.inset + 2)
 						}
 					}
 				}
@@ -256,7 +295,6 @@ struct HomerAgentDetailView: View {
 		VStack(spacing: 0) {
 			if let error = store.runsError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			if !store.hasLoadedRuns {
 				ProgressView("Loading runs…")
@@ -401,6 +439,8 @@ private struct HomerAgentRunTable: View {
 			}
 			.width(min: 70, ideal: 80)
 		}
+		// Stripes would run on past the last row and fill the page; the pills carry the rows.
+		.alternatingRowBackgrounds(.disabled)
 		.contextMenu(forSelectionType: HomerProcess.ID.self) { ids in
 			if let id = ids.first, let process = store.runs[id: id] {
 				contextMenu(for: process)
@@ -424,10 +464,14 @@ private struct HomerAgentRunTable: View {
 				.controlSize(.small)
 		}
 		else if process.isKillable, user.canKill(process) {
-			Button("Kill", role: .destructive) { store.send(.killTapped(processId: process.id)) }
-				.buttonStyle(.scaledBordered)
-				.controlSize(.small)
-				.tint(.red)
+			Button(role: .destructive) {
+				store.send(.killTapped(processId: process.id))
+			} label: {
+				Label("Kill", systemImage: "xmark.octagon")
+					.foregroundStyle(.red)
+			}
+			.buttonStyle(.scaledBordered)
+			.controlSize(.small)
 		}
 		else if process.isRetryable, user.canRetry(process) {
 			Button {

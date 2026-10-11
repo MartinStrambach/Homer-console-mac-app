@@ -6,7 +6,8 @@ import SwiftUI
 
 /// One agent as the console's card shows it (`components/agents/agent-card.tsx`): name,
 /// "Scheduled", description, Edit and Run, the script count, the cron with its next and last
-/// run, and the declared parameters.
+/// run, and the declared parameters — as chips, each one's details in its tooltip; the agent's
+/// page lists them in full.
 struct HomerAgentCard: View {
 	let agent: HomerAgent
 	let user: HomerUser
@@ -16,9 +17,17 @@ struct HomerAgentCard: View {
 		VStack(alignment: .leading, spacing: 12) {
 			header
 
-			Text("Scripts: \(agent.scriptCount)")
-				.scaledFont(.callout)
-				.foregroundStyle(.secondary)
+			HStack(spacing: 14) {
+				Label("\(agent.scriptCount) \(agent.scriptCount == 1 ? "script" : "scripts")", systemImage: "terminal")
+				Label(
+					agent.inputs.isEmpty
+						? "No parameters"
+						: "\(agent.inputs.count) \(agent.inputs.count == 1 ? "parameter" : "parameters")",
+					systemImage: "slider.horizontal.3"
+				)
+			}
+			.scaledFont(.callout)
+			.foregroundStyle(.secondary)
 
 			if let cron = agent.cron {
 				cronBlock(cron)
@@ -26,18 +35,23 @@ struct HomerAgentCard: View {
 
 			parameters
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .topLeading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
-		.contentShape(RoundedRectangle(cornerRadius: 10))
+		.homerHoverCard()
+		.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
 		.contextMenu {
 			contextMenu
 		}
 	}
 
 	private var header: some View {
-		HStack(alignment: .top, spacing: 8) {
+		HStack(alignment: .top, spacing: 10) {
+			HomerIconTile(
+				systemImage: agent.cron == nil ? "square.stack.3d.up.fill" : "calendar.badge.clock",
+				color: agent.cron == nil ? .accentColor : .purple,
+				size: 30
+			)
+
 			VStack(alignment: .leading, spacing: 4) {
 				HStack(spacing: 8) {
 					Button {
@@ -52,11 +66,7 @@ struct HomerAgentCard: View {
 					.help("Open the agent: its parameters, workflow graph and run history")
 
 					if agent.cron != nil {
-						Label("Scheduled", systemImage: "clock")
-							.scaledFont(.caption)
-							.padding(.horizontal, 6)
-							.padding(.vertical, 1)
-							.background(Color.secondary.opacity(0.15), in: Capsule())
+						HomerPill("Scheduled", color: .purple, systemImage: "clock")
 					}
 				}
 				if let description = agent.description, !description.isEmpty {
@@ -99,51 +109,84 @@ struct HomerAgentCard: View {
 	}
 
 	private func cronBlock(_ cron: HomerAgent.Cron) -> some View {
-		VStack(alignment: .leading, spacing: 3) {
-			Text(cron.expression)
-				.scaledFont(.caption, design: .monospaced)
-				.textSelection(.enabled)
+		VStack(alignment: .leading, spacing: 4) {
+			Label {
+				HStack(spacing: 4) {
+					Text(cron.expression)
+						.scaledFont(.caption, design: .monospaced)
+						.foregroundStyle(.primary)
+						.textSelection(.enabled)
+					if !cron.timezone.isEmpty {
+						Text("(\(cron.timezone))")
+					}
+				}
+			} icon: {
+				Image(systemName: "clock")
+					.foregroundStyle(.purple)
+			}
+			.scaledFont(.caption)
 			if let nextRunAt = cron.nextRunAt {
-				Text("Next: \(HomerFormat.timestamp(nextRunAt))")
-					.scaledFont(.caption)
+				Label {
+					HStack(spacing: 4) {
+						Text("Next")
+						HomerScheduleCountdownText(epochSeconds: nextRunAt)
+					}
+				} icon: {
+					Image(systemName: "calendar")
+				}
+				.scaledFont(.caption)
+				.help(HomerFormat.timestamp(nextRunAt))
 			}
 			if let lastRunAt = cron.lastRunAt {
-				HStack(spacing: 4) {
-					Text("Last:")
-					if let processId = cron.lastRunProcessId {
-						Button(HomerFormat.timestamp(lastRunAt)) {
-							store.send(.processTapped(processId: processId))
+				Label {
+					HStack(spacing: 4) {
+						Text("Last")
+						if let processId = cron.lastRunProcessId {
+							Button(HomerFormat.timestamp(lastRunAt)) {
+								store.send(.processTapped(processId: processId))
+							}
+							.buttonStyle(.link)
+							.help("Open process \(processId)")
 						}
-						.buttonStyle(.link)
-						.help("Open process \(processId)")
+						else {
+							Text(HomerFormat.timestamp(lastRunAt))
+						}
 					}
-					else {
-						Text(HomerFormat.timestamp(lastRunAt))
-					}
+				} icon: {
+					Image(systemName: "clock.arrow.circlepath")
 				}
 				.scaledFont(.caption)
 			}
 		}
 		.foregroundStyle(.secondary)
-		.padding(8)
+		.padding(10)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+		.homerInset(tint: .purple)
 	}
 
+	/// The parameters as chips — a required one marked — with type, variable and transformer
+	/// in the tooltip.
 	@ViewBuilder
 	private var parameters: some View {
-		if agent.inputs.isEmpty {
-			Text("No parameters required")
-				.scaledFont(.callout)
-				.foregroundStyle(.secondary)
-		}
-		else {
-			VStack(alignment: .leading, spacing: 10) {
-				Text("Parameters")
-					.scaledFont(.callout)
-					.fontWeight(.medium)
+		if !agent.inputs.isEmpty {
+			HomerFlowLayout(spacing: 6) {
 				ForEach(agent.inputs) { input in
-					HomerAgentInputSummary(input: input)
+					HStack(spacing: 4) {
+						Text(input.paramName)
+							.scaledFont(.caption, design: .monospaced)
+						if input.required {
+							Circle()
+								.fill(.red)
+								.frame(width: 5, height: 5)
+								.accessibilityLabel("required")
+						}
+					}
+					.padding(.horizontal, 8)
+					.padding(.vertical, 3)
+					.background(.fill.tertiary, in: Capsule())
+					.help(
+						"\(input.type)\(input.required ? ", required" : "") · Env: \(input.envName) · \(input.transformer.summary)"
+					)
 				}
 			}
 		}
@@ -233,17 +276,6 @@ struct HomerAgentInputDetails: View {
 	}
 }
 
-private struct HomerAgentInputSummary: View {
-	let input: HomerAgent.Input
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 3) {
-			HomerAgentInputHeader(input: input)
-			HomerAgentInputDetails(input: input)
-		}
-	}
-}
-
 struct HomerAgentBadge: View {
 	let text: String
 	/// Nil for a neutral badge.
@@ -253,10 +285,10 @@ struct HomerAgentBadge: View {
 		Text(text)
 			.scaledFont(.caption2)
 			.fontWeight(.medium)
-			.foregroundStyle(tint == nil ? Color.primary : Color.white)
-			.padding(.horizontal, 5)
+			.foregroundStyle(tint ?? Color.primary)
+			.padding(.horizontal, 6)
 			.padding(.vertical, 1)
-			.background(tint ?? Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
+			.background((tint ?? Color.secondary).opacity(0.15), in: Capsule())
 	}
 }
 
@@ -267,7 +299,7 @@ struct HomerAgentReloadBanner: View {
 	let onDismiss: () -> Void
 
 	var body: some View {
-		HomerAgentDismissableBanner(onDismiss: onDismiss) {
+		HomerAgentDismissableBanner(tint: result.errors.isEmpty ? .green : .orange, onDismiss: onDismiss) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text(
 					"Reloaded — \(result.added.count) added · \(result.updated.count) updated · \(result.removed.count) removed"
@@ -289,7 +321,6 @@ struct HomerAgentReloadBanner: View {
 				}
 			}
 		}
-		.background((result.errors.isEmpty ? Color.green : Color.orange).opacity(0.1))
 	}
 
 	private func changes(_ title: String, _ names: [String], color: Color) -> some View {
@@ -299,12 +330,14 @@ struct HomerAgentReloadBanner: View {
 	}
 }
 
-/// A banner under the toolbar with a close button.
+/// A banner under the toolbar with a close button, on a tint of its color.
 struct HomerAgentDismissableBanner<Content: View>: View {
+	let tint: Color
 	let onDismiss: () -> Void
 	let content: Content
 
-	init(onDismiss: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+	init(tint: Color, onDismiss: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+		self.tint = tint
 		self.onDismiss = onDismiss
 		self.content = content()
 	}
@@ -322,6 +355,13 @@ struct HomerAgentDismissableBanner<Content: View>: View {
 			.help("Dismiss")
 		}
 		.scaledFont(.callout)
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.homerInset(tint: tint)
+		.overlay {
+			RoundedRectangle(cornerRadius: HomerRadius.inset, style: .continuous)
+				.strokeBorder(tint.opacity(0.25))
+		}
 		.padding(.horizontal)
 		.padding(.vertical, 6)
 	}

@@ -14,7 +14,6 @@ struct HomerQuestionListView: View {
 		VStack(spacing: 0) {
 			if let error = store.questionsError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			if !store.hasLoadedQuestions {
 				ProgressView("Loading questions…")
@@ -40,6 +39,9 @@ struct HomerQuestionListView: View {
 						}
 					}
 					.padding()
+					// A readable measure on a wide window, as the Costs page.
+					.frame(maxWidth: 900)
+					.frame(maxWidth: .infinity)
 				}
 			}
 		}
@@ -138,10 +140,9 @@ struct HomerQuestionCard: View {
 			}
 		}
 		.disabled(isAnswering)
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(isOpen ? Color.orange.opacity(0.5) : Color.secondary.opacity(0.25)))
+		.homerCard(highlight: isOpen ? .orange : nil)
 		.opacity(question.status == .expired ? 0.6 : 1)
 		.alert("Cancel this question?", isPresented: isConfirmingCancel) {
 			Button("Yes, Cancel", role: .destructive) {
@@ -202,7 +203,7 @@ struct HomerQuestionCard: View {
 		}
 		.scaledFont(.callout)
 		.padding(10)
-		.background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+		.homerInset(tint: .green)
 	}
 
 	/// An open question's options, typed answer and Cancel (when answering would start an agent).
@@ -224,7 +225,7 @@ struct HomerQuestionCard: View {
 				.textFieldStyle(.roundedBorder)
 				.onSubmit(submitDraft)
 			Button("Send", action: submitDraft)
-				.buttonStyle(.scaledBordered)
+				.buttonStyle(.scaledBorderedProminent)
 				.disabled(draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 			if isAnswering {
 				ProgressView()
@@ -252,13 +253,7 @@ struct HomerQuestionCard: View {
 
 	private var header: some View {
 		HStack(spacing: 8) {
-			Text(statusTitle)
-				.scaledFont(.caption)
-				.fontWeight(.semibold)
-				.foregroundStyle(.white)
-				.padding(.horizontal, 7)
-				.padding(.vertical, 2)
-				.background(statusColor, in: Capsule())
+			HomerPill(statusTitle, color: statusColor)
 
 			Text(question.agentName)
 				.scaledFont(.callout)

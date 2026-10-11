@@ -12,7 +12,7 @@ It is a Swift package, `HomerFeature`, which [Bridge Commander](https://github.c
 Package.swift           # the HomerConsole package; library product HomerFeature
 Sources/
   HomerCore/            # HomerAPI (requests, SSE), cookie jar, instance endpoints, HomerClient, shared models and formats
-  HomerUI/              # DesignSystem/ (text scaling, header button, empty state, title bar area) + Components/ shared by pages
+  HomerUI/              # DesignSystem/ (text scaling, surfaces and pills, header button, empty state, title bar area) + Components/ shared by pages
   HomerWorkflowGraph/   # LangGraph workflow models, the dagre-like layout, graph and status views
   HomerSignIn/          # sign-in form (reducer + view), Fill from Passwords
   HomerProcessDetail/   # a run's page: status, executions, command output, artifacts, Claude transcript

@@ -42,19 +42,15 @@ package struct HomerAgentsView: View {
 			Divider()
 			if let error = store.loadError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			if let error = store.reloadError {
-				HomerAgentDismissableBanner(onDismiss: { store.send(.reloadErrorDismissed) }) {
+				HomerAgentDismissableBanner(tint: .red, onDismiss: { store.send(.reloadErrorDismissed) }) {
 					Label("Reload failed: \(error)", systemImage: "exclamationmark.triangle.fill")
 						.foregroundStyle(.red)
 				}
-				.background(Color.red.opacity(0.08))
-				Divider()
 			}
 			if let result = store.reloadResult {
 				HomerAgentReloadBanner(result: result) { store.send(.reloadResultDismissed) }
-				Divider()
 			}
 			content
 		}
@@ -78,10 +74,9 @@ package struct HomerAgentsView: View {
 					.help("Clear the search")
 				}
 			}
-			.padding(.horizontal, 8)
-			.padding(.vertical, 4)
-			.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-			.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.3)))
+			.padding(.horizontal, 10)
+			.padding(.vertical, 5)
+			.background(.fill.tertiary, in: Capsule())
 			.frame(maxWidth: 360)
 
 			Spacer()
@@ -185,7 +180,6 @@ package struct HomerSchedulesView: View {
 		VStack(spacing: 0) {
 			if let error = store.loadError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			if !store.hasLoaded {
 				ProgressView("Loading schedules…")
@@ -275,6 +269,8 @@ package struct HomerSchedulesView: View {
 			}
 			.width(min: 80, ideal: 90)
 		}
+		// Stripes would run on past the last row and fill the page; the pills carry the rows.
+		.alternatingRowBackgrounds(.disabled)
 		.contextMenu(forSelectionType: HomerAgent.ID.self) { ids in
 			if let id = ids.first, let agent = store.agents[id: id] {
 				contextMenu(for: agent)

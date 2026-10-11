@@ -9,6 +9,10 @@ import SwiftUI
 package struct HomerCostsView: View {
 	let store: StoreOf<HomerCostsReducer>
 
+	/// The content's width, which decides whether the two ledgers sit side by side.
+	@State
+	private var contentWidth: CGFloat = 0
+
 	package init(store: StoreOf<HomerCostsReducer>) {
 		self.store = store
 	}
@@ -17,7 +21,6 @@ package struct HomerCostsView: View {
 		VStack(spacing: 0) {
 			ForEach(store.errorMessages, id: \.self) { message in
 				HomerErrorBanner(message: message)
-				Divider()
 			}
 			if store.isLoading {
 				ProgressView("Loading costs…")
@@ -29,15 +32,66 @@ package struct HomerCostsView: View {
 						Text("Rolling-window Claude spend against configured caps, plus persistent monthly and all-time statistics.")
 							.scaledFont(.callout)
 							.foregroundStyle(.secondary)
+						stats
 						globalSpend
 						perAgentSpend
-						monthlyCosts
-						totalCosts
+						if contentWidth >= Self.sideBySideWidth {
+							HStack(alignment: .top, spacing: 16) {
+								monthlyCosts
+								totalCosts
+							}
+						}
+						else {
+							monthlyCosts
+							totalCosts
+						}
 					}
 					.padding()
-					.frame(maxWidth: 900, alignment: .leading)
+					.frame(maxWidth: 1100, alignment: .leading)
+					.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
 					.frame(maxWidth: .infinity)
 				}
+			}
+		}
+	}
+
+	/// From this wide on, the month's and all-time ledgers sit side by side.
+	private static let sideBySideWidth: CGFloat = 900
+
+	// MARK: - Figures
+
+	/// The page at a glance: the last minute against its cap, the last day, the shown month and
+	/// all time.
+	private var stats: some View {
+		HomerStatGrid {
+			HomerStat("Last 60 s", systemImage: "gauge.with.needle") {
+				if let snapshot = store.snapshot {
+					HStack(alignment: .firstTextBaseline, spacing: 6) {
+						Text(HomerFormat.cost(snapshot.globalUsdLast60s))
+							.monospacedDigit()
+						if let cap = snapshot.globalCapUsdPerMin {
+							let usage = HomerCostUsage(spentUsd: snapshot.globalUsdLast60s, capUsd: cap)
+							Text(usage.percentText)
+								.scaledFont(.callout)
+								.foregroundStyle(HomerCostUsageBar.textColor(usage.level))
+						}
+					}
+				}
+				else {
+					Text(verbatim: "—")
+				}
+			}
+			HomerStat("Last 24 h", systemImage: "clock.arrow.circlepath") {
+				Text(store.snapshot.map { HomerFormat.cost($0.perAgentUsdLast24h.values.reduce(0, +)) } ?? "—")
+					.monospacedDigit()
+			}
+			HomerStat(store.shownMonth.map { HomerFormat.month($0) } ?? "This month", systemImage: "calendar") {
+				Text(store.monthly.map { HomerFormat.cost($0.totalUsd) } ?? "—")
+					.monospacedDigit()
+			}
+			HomerStat("All time", systemImage: "sum") {
+				Text(store.totals.map { HomerFormat.cost($0.totalUsd) } ?? "—")
+					.monospacedDigit()
 			}
 		}
 	}
@@ -60,6 +114,7 @@ package struct HomerCostsView: View {
 					capUsd: snapshot.globalCapUsdPerMin,
 					label: "Global spend per minute"
 				)
+				.padding(.top, 2)
 			}
 			else {
 				HomerCostPlaceholder(failed: store.snapshotError != nil)
@@ -70,7 +125,7 @@ package struct HomerCostsView: View {
 	private var perAgentSpend: some View {
 		HomerCostCard("Per-agent spend (last 24 h)") {
 			if let snapshot = store.snapshot {
-				let usages = snapshot.agentUsages
+				let usages = Self.byNearestCap(snapshot.agentUsages)
 				if usages.isEmpty {
 					HomerCostEmptyText("No agent spend recorded yet.")
 				}
@@ -110,7 +165,7 @@ package struct HomerCostsView: View {
 									label: "\(usage.agentName) spend per day",
 									compact: true
 								)
-								.frame(minWidth: 140, maxWidth: .infinity)
+								.frame(minWidth: 180, maxWidth: .infinity)
 							}
 						}
 					}
@@ -118,6 +173,25 @@ package struct HomerCostsView: View {
 			}
 			else {
 				HomerCostPlaceholder(failed: store.snapshotError != nil)
+			}
+		}
+	}
+
+	/// The agents nearest their cap first, then the uncapped ones by spend: what needs a look
+	/// comes first.
+	static func byNearestCap(_ usages: [HomerCostSnapshot.AgentUsage]) -> [HomerCostSnapshot.AgentUsage] {
+		usages.sorted { lhs, rhs in
+			switch (lhs.capUsd, rhs.capUsd) {
+			case let (lhsCap?, rhsCap?):
+				let lhsRatio = HomerCostUsage(spentUsd: lhs.spentUsd, capUsd: lhsCap).ratio
+				let rhsRatio = HomerCostUsage(spentUsd: rhs.spentUsd, capUsd: rhsCap).ratio
+				return lhsRatio != rhsRatio ? lhsRatio > rhsRatio : lhs.agentName < rhs.agentName
+			case (.some, nil):
+				return true
+			case (nil, .some):
+				return false
+			case (nil, nil):
+				return lhs.spentUsd != rhs.spentUsd ? lhs.spentUsd > rhs.spentUsd : lhs.agentName < rhs.agentName
 			}
 		}
 	}
@@ -201,10 +275,9 @@ private struct HomerCostCard<Accessory: View, Content: View>: View {
 			content
 				.scaledFont(.body)
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
+		.homerCard()
 	}
 }
 
@@ -262,7 +335,7 @@ private struct HomerCostPlaceholder: View {
 /// The console's `CostUsageBar`: spend against a cap, the bar green, yellow from 80 % and red at
 /// the cap. Without a cap there is no bar, only the spend. `compact` (a table row) leaves the
 /// amounts to the row's own columns and puts the percentage under the bar.
-private struct HomerCostUsageBar: View {
+struct HomerCostUsageBar: View {
 	let spentUsd: Double
 	let capUsd: Double?
 	let label: String
@@ -281,17 +354,27 @@ private struct HomerCostUsageBar: View {
 						Text(usage.level == .overCap ? "\(usage.percentText) — cap exceeded" : usage.percentText)
 							.scaledFont(.caption)
 							.fontWeight(.medium)
-							.foregroundStyle(textColor(usage.level))
+							.foregroundStyle(Self.textColor(usage.level))
 					}
 				}
-				HomerCostBar(fraction: usage.percent / 100, color: barColor(usage.level))
+				HStack(spacing: 8) {
+					HomerCostBar(
+						fraction: usage.percent / 100,
+						color: barColor(usage.level),
+						height: compact ? 6 : 10,
+						marker: compact ? nil : Self.nearCapRatio
+					)
 					.accessibilityElement()
 					.accessibilityLabel(label)
 					.accessibilityValue(usage.percentText)
-				if compact {
-					Text(usage.percentText)
-						.scaledFont(.caption)
-						.foregroundStyle(usage.level == .normal ? .secondary : textColor(usage.level))
+					if compact {
+						Text(usage.percentText)
+							.scaledFont(.caption)
+							.fontWeight(usage.level == .normal ? .regular : .semibold)
+							.foregroundStyle(Self.textColor(usage.level))
+							.monospacedDigit()
+							.frame(minWidth: 34, alignment: .trailing)
+					}
 				}
 			}
 		}
@@ -299,6 +382,7 @@ private struct HomerCostUsageBar: View {
 			Text("No cap")
 				.scaledFont(.caption)
 				.foregroundStyle(.secondary)
+				.frame(maxWidth: .infinity, alignment: .leading)
 		}
 		else {
 			HStack(alignment: .firstTextBaseline) {
@@ -324,8 +408,11 @@ private struct HomerCostUsageBar: View {
 		}
 	}
 
+	/// Where the bar turns yellow, marked on the large bars.
+	private static let nearCapRatio = 0.8
+
 	/// Orange rather than the bar's yellow: yellow text is unreadable on a light background.
-	private func textColor(_ level: HomerCostUsage.Level) -> Color {
+	static func textColor(_ level: HomerCostUsage.Level) -> Color {
 		switch level {
 		case .normal:
 			.secondary
@@ -337,27 +424,44 @@ private struct HomerCostUsageBar: View {
 	}
 }
 
+/// A filled capsule: spend against a cap, or an agent's share of a ledger. `marker` ticks a
+/// fraction of the track — where a usage bar turns yellow.
 private struct HomerCostBar: View {
 	let fraction: Double
 	let color: Color
+	var height: CGFloat = 8
+	var marker: Double?
 
 	var body: some View {
 		Capsule()
 			.fill(.quaternary)
-			.frame(height: 8)
+			.frame(height: height)
 			.overlay(alignment: .leading) {
 				GeometryReader { proxy in
 					Capsule()
-						.fill(color)
-						.frame(width: proxy.size.width * fraction)
+						.fill(color.gradient)
+						.frame(width: max(fraction > 0 ? height : 0, proxy.size.width * fraction))
 				}
 			}
 			.clipShape(Capsule())
+			.overlay(alignment: .leading) {
+				if let marker {
+					GeometryReader { proxy in
+						Rectangle()
+							.fill(Color.primary.opacity(0.35))
+							.frame(width: 1.5, height: height + 6)
+							.offset(x: proxy.size.width * marker - 0.75, y: -3)
+					}
+					.frame(height: height)
+					.help("\(Int(marker * 100))% of the cap: the bar turns yellow")
+				}
+			}
 			.animation(.default, value: fraction)
 	}
 }
 
-/// A ledger's per-agent spend with a total row, as `MonthlyCostsCard`/`TotalCostsCard` show it.
+/// A ledger's per-agent spend with a total row, as `MonthlyCostsCard`/`TotalCostsCard` show it —
+/// the biggest spender first, each row with its share of the total as a bar.
 private struct HomerCostLedgerTable: View {
 	let rows: [HomerAgentCost]
 	let totalUsd: Double
@@ -368,29 +472,34 @@ private struct HomerCostLedgerTable: View {
 			HomerCostEmptyText(emptyText)
 		}
 		else {
-			Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-				GridRow {
-					Text("Agent")
-						.frame(maxWidth: .infinity, alignment: .leading)
-					Text("Spent")
-						.gridColumnAlignment(.trailing)
-				}
-				.scaledFont(.caption)
-				.fontWeight(.medium)
-				.foregroundStyle(.secondary)
-				Divider()
-				ForEach(rows) { row in
-					GridRow {
-						Text(row.agentName)
-							.fontWeight(.medium)
-							.lineLimit(1)
-							.textSelection(.enabled)
-						HomerCostAmount(row.usd)
+			let sorted = rows.sorted { $0.usd != $1.usd ? $0.usd > $1.usd : $0.agentName < $1.agentName }
+			VStack(alignment: .leading, spacing: 10) {
+				ForEach(sorted) { row in
+					let share = totalUsd > 0 ? row.usd / totalUsd : 0
+					VStack(alignment: .leading, spacing: 4) {
+						HStack(alignment: .firstTextBaseline, spacing: 8) {
+							Text(row.agentName)
+								.fontWeight(.medium)
+								.lineLimit(1)
+								.textSelection(.enabled)
+							Spacer(minLength: 8)
+							HomerCostAmount(row.usd)
+							// The usage bars' "42%", not the locale's percent format.
+							Text(verbatim: "\(Int((share * 100).rounded()))%")
+								.scaledFont(.caption)
+								.foregroundStyle(.secondary)
+								.monospacedDigit()
+								.frame(minWidth: 34, alignment: .trailing)
+						}
+						HomerCostBar(fraction: share, color: .accentColor, height: 5)
+							.accessibilityHidden(true)
 					}
+					.accessibilityElement(children: .combine)
 				}
 				Divider()
-				GridRow {
+				HStack(alignment: .firstTextBaseline) {
 					Text("Total")
+					Spacer()
 					HomerCostAmount(totalUsd)
 				}
 				.fontWeight(.semibold)

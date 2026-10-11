@@ -73,7 +73,6 @@ struct HomerArtifactsView: View {
 			VStack(spacing: 0) {
 				if let error = store.loadError {
 					HomerErrorBanner(message: error)
-					Divider()
 				}
 				Table(store.artifacts) {
 					TableColumn("Path") { artifact in
@@ -94,7 +93,30 @@ struct HomerArtifactsView: View {
 					}
 					.width(min: 90, ideal: 120, max: 160)
 				}
+				.alternatingRowBackgrounds(.disabled)
 			}
+		}
+	}
+
+	/// A file's symbol by its kind: a log, JSON, an image, Markdown, an archive.
+	static func systemImage(forPath path: String) -> String {
+		switch (path as NSString).pathExtension.lowercased() {
+		case "log", "txt", "out", "err":
+			"doc.plaintext"
+		case "json", "jsonl", "ndjson", "yaml", "yml", "toml":
+			"curlybraces"
+		case "png", "jpg", "jpeg", "gif", "webp", "svg":
+			"photo"
+		case "md", "markdown", "html":
+			"doc.richtext"
+		case "zip", "gz", "tgz", "tar":
+			"archivebox"
+		case "diff", "patch":
+			"plusminus"
+		case "py", "ts", "js", "swift", "sh", "go", "rb", "kt":
+			"chevron.left.forwardslash.chevron.right"
+		default:
+			"doc"
 		}
 	}
 
@@ -103,7 +125,7 @@ struct HomerArtifactsView: View {
 			Button {
 				store.send(.downloadTapped(path: artifact.path))
 			} label: {
-				Label(artifact.path, systemImage: "doc.text")
+				Label(artifact.path, systemImage: Self.systemImage(forPath: artifact.path))
 					.scaledFont(.callout, design: .monospaced)
 					.lineLimit(1)
 					.truncationMode(.middle)

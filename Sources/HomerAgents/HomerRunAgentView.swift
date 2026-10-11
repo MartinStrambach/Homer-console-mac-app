@@ -101,7 +101,7 @@ struct HomerRunAgentView: View {
 				.textSelection(.enabled)
 				.padding(10)
 				.frame(maxWidth: .infinity, alignment: .leading)
-				.background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+				.homerInset(tint: .red)
 		}
 	}
 
@@ -163,8 +163,7 @@ struct HomerRunAgentView: View {
 					.frame(maxWidth: .infinity, alignment: .leading)
 			}
 			.frame(height: 200)
-			.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-			.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.3)))
+			.homerField()
 
 			Text("The command carries no credentials: add your own, e.g. `-H 'Authorization: Bearer …'`.")
 				.scaledFont(.caption)
