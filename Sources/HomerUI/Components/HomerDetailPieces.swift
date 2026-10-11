@@ -62,13 +62,13 @@ package struct HomerStat<Value: View>: View {
 		}
 		.padding(.horizontal, 14)
 		.padding(.vertical, 10)
-		.frame(maxWidth: .infinity, alignment: .leading)
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 		.homerCard()
 		.accessibilityElement(children: .combine)
 	}
 }
 
-/// Stat tiles side by side, sharing the row's width.
+/// Stat tiles side by side, sharing the row's width and the tallest one's height.
 package struct HomerStatGrid<Content: View>: View {
 	private let content: Content
 
@@ -80,6 +80,7 @@ package struct HomerStatGrid<Content: View>: View {
 		HStack(spacing: 12) {
 			content
 		}
+		.fixedSize(horizontal: false, vertical: true)
 	}
 }
 
