@@ -183,9 +183,9 @@ package nonisolated enum HomerAPI {
 	///     `queryItems` leaves a `+` alone, which the server reads as a space.
 	///   - headers: Request headers of the caller's own. They go on first, so none of them can
 	///     replace what the API needs.
-	///   - refusalsInServerWords: Every refusal but 401 and 403 that carries the server's `msg`
-	///     throws it as `.server`, instead of the meaning a 409 or 429 has for questions and
-	///     the login limiter.
+	///   - refusalsInServerWords: Every refusal but 401 that carries the server's `msg` throws
+	///     it as `.server`, instead of the meaning a 403, 409 or 429 has elsewhere — a 403 from
+	///     the agent file API is as often a read-only agent directory as a missing grant.
 	package static func send(
 		_ method: String,
 		_ path: String,
@@ -347,18 +347,18 @@ package nonisolated enum HomerAPI {
 		return request
 	}
 
-	private static func check(_ http: HTTPURLResponse, body data: Data, refusalsInServerWords: Bool) throws {
+	static func check(_ http: HTTPURLResponse, body data: Data, refusalsInServerWords: Bool) throws {
 		switch http.statusCode {
 		case 200 ..< 300:
 			return
 		case 401:
 			throw HomerAPIError.unauthorized
-		case 403:
-			throw HomerAPIError.forbidden
 		case 422 where !(schemaErrors(in: data) ?? []).isEmpty:
 			throw HomerAPIError.invalid(message: errorMessage(in: data), errors: schemaErrors(in: data) ?? [])
 		case _ where refusalsInServerWords && errorMessage(in: data) != nil:
 			throw HomerAPIError.server(status: http.statusCode, message: errorMessage(in: data))
+		case 403:
+			throw HomerAPIError.forbidden
 		case 409:
 			throw HomerAPIError.conflict
 		case 429:
