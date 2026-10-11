@@ -118,4 +118,16 @@ struct HomerCostModelsTests {
 		#expect(HomerFormat.month("2026-01", locale: english) == "January 2026")
 		#expect(HomerFormat.month("July", locale: english) == "July")
 	}
+
+	@Test("the per-agent table lists the agents nearest their cap first, then the uncapped by spend")
+	@MainActor
+	func nearestCapFirst() {
+		let usages = HomerCostSnapshot(
+			globalUsdLast60s: 0,
+			perAgentUsdLast24h: ["a": 1, "b": 9, "c": 5, "d": 2],
+			perAgentCapUsdPerDay: ["a": 10, "b": 10, "e": 4]
+		).agentUsages
+
+		#expect(HomerCostsView.byNearestCap(usages).map(\.agentName) == ["b", "a", "e", "c", "d"])
+	}
 }
