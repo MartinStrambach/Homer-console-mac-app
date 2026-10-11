@@ -26,11 +26,10 @@ struct HomerAgentCard: View {
 
 			parameters
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .topLeading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
-		.contentShape(RoundedRectangle(cornerRadius: 10))
+		.homerCard()
+		.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
 		.contextMenu {
 			contextMenu
 		}
@@ -52,11 +51,7 @@ struct HomerAgentCard: View {
 					.help("Open the agent: its parameters, workflow graph and run history")
 
 					if agent.cron != nil {
-						Label("Scheduled", systemImage: "clock")
-							.scaledFont(.caption)
-							.padding(.horizontal, 6)
-							.padding(.vertical, 1)
-							.background(Color.secondary.opacity(0.15), in: Capsule())
+						HomerPill("Scheduled", color: .purple, systemImage: "clock")
 					}
 				}
 				if let description = agent.description, !description.isEmpty {
@@ -127,7 +122,7 @@ struct HomerAgentCard: View {
 		.foregroundStyle(.secondary)
 		.padding(8)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+		.homerInset()
 	}
 
 	@ViewBuilder
@@ -253,10 +248,10 @@ struct HomerAgentBadge: View {
 		Text(text)
 			.scaledFont(.caption2)
 			.fontWeight(.medium)
-			.foregroundStyle(tint == nil ? Color.primary : Color.white)
-			.padding(.horizontal, 5)
+			.foregroundStyle(tint ?? Color.primary)
+			.padding(.horizontal, 6)
 			.padding(.vertical, 1)
-			.background(tint ?? Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
+			.background((tint ?? Color.secondary).opacity(0.15), in: Capsule())
 	}
 }
 
@@ -267,7 +262,7 @@ struct HomerAgentReloadBanner: View {
 	let onDismiss: () -> Void
 
 	var body: some View {
-		HomerAgentDismissableBanner(onDismiss: onDismiss) {
+		HomerAgentDismissableBanner(tint: result.errors.isEmpty ? .green : .orange, onDismiss: onDismiss) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text(
 					"Reloaded — \(result.added.count) added · \(result.updated.count) updated · \(result.removed.count) removed"
@@ -289,7 +284,6 @@ struct HomerAgentReloadBanner: View {
 				}
 			}
 		}
-		.background((result.errors.isEmpty ? Color.green : Color.orange).opacity(0.1))
 	}
 
 	private func changes(_ title: String, _ names: [String], color: Color) -> some View {
@@ -299,12 +293,14 @@ struct HomerAgentReloadBanner: View {
 	}
 }
 
-/// A banner under the toolbar with a close button.
+/// A banner under the toolbar with a close button, on a tint of its color.
 struct HomerAgentDismissableBanner<Content: View>: View {
+	let tint: Color
 	let onDismiss: () -> Void
 	let content: Content
 
-	init(onDismiss: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+	init(tint: Color, onDismiss: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+		self.tint = tint
 		self.onDismiss = onDismiss
 		self.content = content()
 	}
@@ -322,6 +318,13 @@ struct HomerAgentDismissableBanner<Content: View>: View {
 			.help("Dismiss")
 		}
 		.scaledFont(.callout)
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.homerInset(tint: tint)
+		.overlay {
+			RoundedRectangle(cornerRadius: HomerRadius.inset, style: .continuous)
+				.strokeBorder(tint.opacity(0.25))
+		}
 		.padding(.horizontal)
 		.padding(.vertical, 6)
 	}

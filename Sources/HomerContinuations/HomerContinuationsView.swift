@@ -19,7 +19,6 @@ package struct HomerContinuationsView: View {
 		VStack(spacing: 0) {
 			if let error = store.loadError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			content
 		}
@@ -165,10 +164,9 @@ struct HomerContinuationCard: View {
 				}
 			}
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.3)))
+		.homerCard(highlight: continuation.status == .failed ? .red : nil)
 		// Settled continuations read as done, as in the console.
 		.opacity(continuation.status == .pending ? 1 : 0.8)
 		.environment(\.openURL, OpenURLAction { url in
@@ -290,13 +288,7 @@ struct HomerContinuationStatusBadge: View {
 	let status: HomerContinuationStatus
 
 	var body: some View {
-		Text(status.title)
-			.scaledFont(.caption)
-			.fontWeight(.semibold)
-			.foregroundStyle(.white)
-			.padding(.horizontal, 7)
-			.padding(.vertical, 2)
-			.background(color, in: Capsule())
+		HomerPill(status.title, color: color)
 			.help("Continuation status: \(status.title)")
 	}
 

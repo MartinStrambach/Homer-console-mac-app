@@ -73,7 +73,6 @@ struct HomerArtifactsView: View {
 			VStack(spacing: 0) {
 				if let error = store.loadError {
 					HomerErrorBanner(message: error)
-					Divider()
 				}
 				Table(store.artifacts) {
 					TableColumn("Path") { artifact in

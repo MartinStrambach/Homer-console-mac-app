@@ -79,29 +79,31 @@ public struct HomerConsoleView<Leading: View>: View {
 
 			Spacer()
 
-			HStack(spacing: 12) {
-				if !store.instances.isEmpty {
-					instanceMenu
-				}
+			// One container, so the glass pieces sample each other and blend where they meet.
+			GlassEffectContainer(spacing: 8) {
+				HStack(spacing: 8) {
+					if !store.instances.isEmpty {
+						instanceMenu
+					}
 
-				if showsConsole, let instance = store.selectedInstance, let user = instance.user {
-					HeaderButton(
-						icon: "arrow.clockwise",
-						tooltip: "Refresh (⌘R)",
-						color: .blue,
-						action: { store.send(.refreshTapped) }
-					)
-					// A host with a ⌘R of its own disables it while the console is shown (Bridge
-					// Commander's `RootRepositoryView` does), so this one has the key to itself.
-					.keyboardShortcut("r", modifiers: .command)
+					if showsConsole, let instance = store.selectedInstance, let user = instance.user {
+						HeaderButton(
+							icon: "arrow.clockwise",
+							tooltip: "Refresh (⌘R)",
+							action: { store.send(.refreshTapped) }
+						)
+						// A host with a ⌘R of its own disables it while the console is shown (Bridge
+						// Commander's `RootRepositoryView` does), so this one has the key to itself.
+						.keyboardShortcut("r", modifiers: .command)
 
-					HeaderButton(
-						icon: "safari",
-						tooltip: "Open this page of the web console",
-						action: openCurrentPageInWebConsole
-					)
+						HeaderButton(
+							icon: "safari",
+							tooltip: "Open this page of the web console",
+							action: openCurrentPageInWebConsole
+						)
 
-					accountMenu(user: user, instance: instance)
+						accountMenu(user: user, instance: instance)
+					}
 				}
 			}
 		}
@@ -191,6 +193,9 @@ public struct HomerConsoleView<Leading: View>: View {
 			.labelStyle(.titleAndIcon)
 			.menuStyle(.borderlessButton)
 			.fixedSize()
+			.padding(.horizontal, 12)
+			.frame(height: 30)
+			.glassEffect(.regular.interactive(), in: .capsule)
 			.help("Switch Homer instance (⌘1–⌘9), or add one")
 
 			let elsewhere = store.otherInstancesOpenQuestionCount
@@ -258,12 +263,13 @@ public struct HomerConsoleView<Leading: View>: View {
 		} label: {
 			Image(systemName: "person.crop.circle")
 				.font(.system(size: 16))
-				.foregroundStyle(.gray)
 		}
 		.labelStyle(.titleAndIcon)
 		.menuStyle(.borderlessButton)
 		.menuIndicator(.hidden)
 		.fixedSize()
+		.frame(width: 30, height: 30)
+		.glassEffect(.regular.interactive(), in: .circle)
 		.help("Signed in as \(user.username)")
 	}
 

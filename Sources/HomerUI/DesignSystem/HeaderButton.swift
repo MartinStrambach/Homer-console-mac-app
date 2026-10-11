@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Reusable button component for header actions
+/// A header action: an icon on a circle of Liquid Glass. The icon is monochrome, as toolbar icons
+/// are on macOS 26; `color` is for an icon whose color means something.
 package struct HeaderButton: View {
 	private let icon: String
 	private let tooltip: String
@@ -10,18 +11,19 @@ package struct HeaderButton: View {
 	package var body: some View {
 		Button(action: action) {
 			Image(systemName: icon)
-				.font(.system(size: 16))
-				.foregroundColor(color)
-				.frame(width: 24, height: 24)
+				.font(.system(size: 14, weight: .medium))
+				.foregroundStyle(color)
+				.frame(width: 20, height: 20)
 		}
-		.frame(width: 30, height: 30)
+		.buttonStyle(.glass)
+		.buttonBorderShape(.circle)
 		.help(tooltip)
 	}
 
 	package init(
 		icon: String,
 		tooltip: String,
-		color: Color = .gray,
+		color: Color = .primary,
 		action: @escaping () -> Void
 	) {
 		self.icon = icon
@@ -37,7 +39,6 @@ package struct HeaderButton: View {
 		HeaderButton(
 			icon: "arrow.clockwise",
 			tooltip: "Refresh",
-			color: .blue,
 			action: {}
 		)
 		HeaderButton(

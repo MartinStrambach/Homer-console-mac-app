@@ -99,7 +99,6 @@ struct HomerProcessOutputView: View {
 			VStack(spacing: 0) {
 				if let error = output.error {
 					HomerErrorBanner(message: error)
-					Divider()
 				}
 				if output.text.isEmpty {
 					placeholder(output.isComplete ? "The file is empty" : "Waiting for output…")
@@ -252,13 +251,7 @@ struct HomerClaudeTranscriptView: View {
 					.foregroundStyle(.secondary)
 			}
 			if let outcome = transcript.outcome {
-				Text(outcome.isError ? "error" : "success")
-					.scaledFont(.caption)
-					.fontWeight(.semibold)
-					.foregroundStyle(.white)
-					.padding(.horizontal, 6)
-					.padding(.vertical, 1)
-					.background(outcome.isError ? Color.red : Color.secondary, in: Capsule())
+				HomerPill(outcome.isError ? "error" : "success", color: outcome.isError ? .red : .green)
 				metric("cost", HomerFormat.cost(outcome.costUsd))
 				metric("tokens", Self.tokens(outcome))
 				metric(
@@ -270,7 +263,7 @@ struct HomerClaudeTranscriptView: View {
 		}
 		.padding(10)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+		.homerInset()
 	}
 
 	private var liveHeader: some View {
@@ -298,7 +291,7 @@ struct HomerClaudeTranscriptView: View {
 		}
 		.padding(10)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+		.homerInset()
 	}
 
 	private func metric(_ name: String, _ value: String) -> some View {
@@ -374,7 +367,6 @@ struct HomerTranscriptBlock<Content: View>: View {
 					.padding(10)
 			}
 		}
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-		.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.25)))
+		.homerCard(cornerRadius: HomerRadius.inset)
 	}
 }

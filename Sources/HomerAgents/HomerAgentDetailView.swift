@@ -81,11 +81,7 @@ struct HomerAgentDetailView: View {
 					.fontWeight(.bold)
 					.textSelection(.enabled)
 				if agent.cron != nil {
-					Label("Scheduled", systemImage: "clock")
-						.scaledFont(.caption)
-						.padding(.horizontal, 6)
-						.padding(.vertical, 1)
-						.background(Color.secondary.opacity(0.15), in: Capsule())
+					HomerPill("Scheduled", color: .purple, systemImage: "clock")
 				}
 
 				Spacer()
@@ -256,7 +252,6 @@ struct HomerAgentDetailView: View {
 		VStack(spacing: 0) {
 			if let error = store.runsError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			if !store.hasLoadedRuns {
 				ProgressView("Loading runs…")

@@ -18,14 +18,11 @@ struct HomerProcessListView: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			filterBar
-			Divider()
 			if let sweep = store.sweep {
 				HomerSweepBanner(sweep: sweep)
-				Divider()
 			}
 			if let error = store.processesError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			content
 		}
@@ -118,15 +115,23 @@ struct HomerProcessListView: View {
 		return Button {
 			store.send(.statusFilterToggled(status))
 		} label: {
-			Text(status.rawValue)
-				.scaledFont(.caption)
-				.fontWeight(.semibold)
-				.padding(.horizontal, 9)
-				.padding(.vertical, 3)
-				.foregroundStyle(isOn ? Color.white : Color.primary)
-				.background(isOn ? Color.accentColor : Color.clear, in: Capsule())
-				.overlay(Capsule().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.4)))
-				.contentShape(Capsule())
+			HStack(spacing: 5) {
+				Circle()
+					.fill(isOn ? Color.white : status.color)
+					.frame(width: 6, height: 6)
+				Text(status.rawValue)
+			}
+			.scaledFont(.caption)
+			.fontWeight(.semibold)
+			.padding(.horizontal, 9)
+			.padding(.vertical, 4)
+			.foregroundStyle(isOn ? Color.white : Color.primary)
+			.background {
+				Capsule()
+					.fill(isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.fill.tertiary))
+			}
+			.contentShape(Capsule())
+			.animation(.snappy(duration: 0.15), value: isOn)
 		}
 		.buttonStyle(.plain)
 		.help(isOn ? "Stop filtering by \(status.title)" : "Show only \(status.title) runs")
@@ -147,9 +152,10 @@ struct HomerProcessListView: View {
 			.buttonStyle(.plain)
 			.help("Remove this filter")
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 3)
-		.background(Color.secondary.opacity(0.15), in: Capsule())
+		.padding(.horizontal, 9)
+		.padding(.vertical, 4)
+		.foregroundStyle(Color.accentColor)
+		.background(Color.accentColor.opacity(0.14), in: Capsule())
 	}
 
 	// MARK: - Table
@@ -293,14 +299,8 @@ struct HomerProcessListView: View {
 		Button {
 			store.send(.tagTapped(tag))
 		} label: {
-			Text(tag)
-				.scaledFont(.caption2, design: .monospaced)
-				.lineLimit(1)
-				.truncationMode(.middle)
-				.frame(maxWidth: 200)
-				.padding(.horizontal, 6)
-				.padding(.vertical, 1)
-				.background(Color.secondary.opacity(0.15), in: Capsule())
+			HomerChip(tag, monospaced: true)
+				.frame(maxWidth: 212, alignment: .leading)
 				.contentShape(Capsule())
 		}
 		.buttonStyle(.plain)
@@ -416,12 +416,7 @@ struct HomerFlowSummaryView: View {
 						.foregroundStyle(.secondary)
 				}
 				if let state = summary.state {
-					Text(Self.label(state))
-						.scaledFont(.caption)
-						.foregroundStyle(.white)
-						.padding(.horizontal, 5)
-						.padding(.vertical, 1)
-						.background(Self.color(state), in: RoundedRectangle(cornerRadius: 4))
+					HomerPill(Self.label(state), color: Self.color(state))
 				}
 				if summary.isPartial {
 					Text("partial")
@@ -471,7 +466,10 @@ struct HomerSweepBanner: View {
 	let sweep: HomerHealth.Sweep
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
+		HomerBanner(
+			tint: sweep.errors.isEmpty ? .secondary : .red,
+			systemImage: sweep.errors.isEmpty ? "shippingbox" : "exclamationmark.triangle.fill"
+		) {
 			HStack(spacing: 6) {
 				Text("Orphan pod sweep:")
 					.fontWeight(.medium)
@@ -488,11 +486,6 @@ struct HomerSweepBanner: View {
 					.textSelection(.enabled)
 			}
 		}
-		.scaledFont(.callout)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.horizontal)
-		.padding(.vertical, 6)
-		.background((sweep.errors.isEmpty ? Color.secondary : Color.red).opacity(0.08))
 		.help(deletedPods)
 	}
 

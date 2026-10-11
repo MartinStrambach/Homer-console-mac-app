@@ -93,8 +93,7 @@ struct HomerAgentDebugPanel: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 5)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-		.overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.25)))
+		.homerCard(cornerRadius: HomerRadius.inset)
 	}
 
 	private func log(_ run: HomerAgentDebugReducer.ActiveRun) -> some View {
@@ -240,7 +239,7 @@ struct HomerAgentDebugRunView: View {
 							.textSelection(.enabled)
 							.padding(10)
 							.frame(maxWidth: .infinity, alignment: .leading)
-							.background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+							.homerInset(tint: .red)
 					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)

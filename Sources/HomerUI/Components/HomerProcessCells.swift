@@ -12,28 +12,7 @@ package struct HomerStatusBadge: View {
 	}
 
 	package var body: some View {
-		Text(status.title)
-			.scaledFont(.caption)
-			.fontWeight(.semibold)
-			.foregroundStyle(.white)
-			.padding(.horizontal, 7)
-			.padding(.vertical, 2)
-			.background(color, in: Capsule())
-	}
-
-	private var color: Color {
-		switch status {
-		case .working:
-			.blue
-		case .finished:
-			.green
-		case .failed:
-			.red
-		case .killed:
-			.orange
-		case .created, .unknown:
-			.gray
-		}
+		HomerPill(status.title, color: status.color)
 	}
 }
 

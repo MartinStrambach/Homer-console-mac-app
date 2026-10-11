@@ -17,7 +17,6 @@ package struct HomerCostsView: View {
 		VStack(spacing: 0) {
 			ForEach(store.errorMessages, id: \.self) { message in
 				HomerErrorBanner(message: message)
-				Divider()
 			}
 			if store.isLoading {
 				ProgressView("Loading costs…")
@@ -201,10 +200,9 @@ private struct HomerCostCard<Accessory: View, Content: View>: View {
 			content
 				.scaledFont(.body)
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
+		.homerCard()
 	}
 }
 
@@ -348,7 +346,7 @@ private struct HomerCostBar: View {
 			.overlay(alignment: .leading) {
 				GeometryReader { proxy in
 					Capsule()
-						.fill(color)
+						.fill(color.gradient)
 						.frame(width: proxy.size.width * fraction)
 				}
 			}

@@ -31,12 +31,10 @@ package struct HomerProcessDetailView<Questions: View>: View {
 	package var body: some View {
 		VStack(spacing: 0) {
 			navigationBar
-			Divider()
 			header
 			Divider()
 			if let error = store.loadError {
 				HomerErrorBanner(message: error)
-				Divider()
 			}
 			content
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,7 +78,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		}
 		.scaledFont(.callout)
 		.padding(.horizontal)
-		.padding(.vertical, 8)
+		.padding(.top, 8)
 	}
 
 	private var header: some View {
@@ -195,11 +193,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			}
 			if let tags = process.tags, !tags.isEmpty {
 				ForEach(tags, id: \.self) { tag in
-					Text(tag)
-						.scaledFont(.caption2, design: .monospaced)
-						.padding(.horizontal, 6)
-						.padding(.vertical, 1)
-						.background(Color.secondary.opacity(0.15), in: Capsule())
+					HomerChip(tag, monospaced: true)
 				}
 			}
 			if let parent = process.parentProcessId {
@@ -237,9 +231,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 							Text("workspace purge (\(HomerFormat.timeUntil(purgeAt, now: context.date)))")
 								.scaledFont(.caption)
 								.foregroundStyle(.secondary)
-								.padding(.horizontal, 6)
-								.padding(.vertical, 1)
-								.background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+								.padding(.horizontal, 7)
+								.padding(.vertical, 2)
+								.background(.fill.tertiary, in: Capsule())
 						}
 					}
 				}
@@ -305,10 +299,9 @@ package struct HomerDetailSection<Content: View>: View {
 			}
 			content()
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-		.overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
+		.homerCard()
 	}
 }
 
@@ -330,13 +323,7 @@ struct HomerRunnerPanel: View {
 						.foregroundStyle(.secondary)
 						.textSelection(.enabled)
 					if let phase = runner.podPhase {
-						Text(Self.title(podPhase: phase))
-							.scaledFont(.caption)
-							.fontWeight(.semibold)
-							.foregroundStyle(.white)
-							.padding(.horizontal, 7)
-							.padding(.vertical, 2)
-							.background(HomerRunnerView.color(podPhase: phase), in: Capsule())
+						HomerPill(Self.title(podPhase: phase), color: HomerRunnerView.color(podPhase: phase))
 					}
 				}
 				if let podName = runner.podName {
@@ -456,8 +443,7 @@ struct HomerExecutionRow: View {
 					.padding(12)
 			}
 		}
-		.background(Color(nsColor: .textBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-		.overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.2)))
+		.homerInset()
 	}
 
 	@ViewBuilder
@@ -610,8 +596,11 @@ struct HomerCurrentCommandRow: View {
 			}
 		}
 		.padding(12)
-		.background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-		.overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.2)))
+		.homerInset(tint: .blue)
+		.overlay {
+			RoundedRectangle(cornerRadius: HomerRadius.inset, style: .continuous)
+				.strokeBorder(Color.blue.opacity(0.3))
+		}
 	}
 }
 

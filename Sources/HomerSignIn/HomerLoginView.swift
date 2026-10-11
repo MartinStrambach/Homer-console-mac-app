@@ -42,11 +42,16 @@ package struct HomerLoginView: View {
 				}
 
 				if store.sessionExpired {
-					Label("Your session expired. Please sign in again.", systemImage: "clock.badge.exclamationmark")
-						.scaledFont(.callout)
-						.frame(maxWidth: .infinity, alignment: .leading)
-						.padding(10)
-						.background(Color.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+					Label {
+						Text("Your session expired. Please sign in again.")
+					} icon: {
+						Image(systemName: "clock.badge.exclamationmark")
+							.foregroundStyle(.orange)
+					}
+					.scaledFont(.callout)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.padding(10)
+					.homerInset(tint: .orange)
 				}
 
 				VStack(alignment: .leading, spacing: 14) {
@@ -72,6 +77,7 @@ package struct HomerLoginView: View {
 					}
 				}
 				.textFieldStyle(.roundedBorder)
+				.controlSize(.large)
 				.onSubmit { store.send(.signInTapped) }
 
 				HStack {
@@ -94,13 +100,16 @@ package struct HomerLoginView: View {
 						.keyboardShortcut(.defaultAction)
 						.disabled(store.isSigningIn || store.loginCooldown > 0)
 				}
+				.controlSize(.large)
 			}
-			.padding(24)
-			.frame(maxWidth: 420)
-			.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-			.padding(32)
+			.padding(28)
+			.frame(maxWidth: 440)
+			.homerCard(cornerRadius: 20)
+			.shadow(color: .black.opacity(0.08), radius: 24, y: 8)
+			.padding(40)
 			.frame(maxWidth: .infinity)
 		}
+		.background(backdrop)
 		.onAppear {
 			focusedField = store.isAddingInstance && store.endpoint.isEmpty ? .endpoint : .username
 		}
@@ -116,6 +125,17 @@ package struct HomerLoginView: View {
 			}
 			showPasswordsPicker(in: .password, after: .milliseconds(300))
 		}
+	}
+
+	/// A soft wash of the accent color behind the card.
+	private var backdrop: some View {
+		RadialGradient(
+			colors: [Color.accentColor.opacity(0.14), .clear],
+			center: .top,
+			startRadius: 0,
+			endRadius: 640
+		)
+		.ignoresSafeArea()
 	}
 
 	private var title: String {
@@ -181,9 +201,8 @@ package struct HomerLoginView: View {
 					.textSelection(.enabled)
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.padding(.horizontal, 8)
-					.padding(.vertical, 5)
-					.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-					.overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.3)))
+					.padding(.vertical, 6)
+					.homerField(cornerRadius: 6)
 			}
 		}
 	}

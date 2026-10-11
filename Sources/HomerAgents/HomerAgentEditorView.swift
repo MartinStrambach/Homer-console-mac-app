@@ -117,16 +117,14 @@ struct HomerAgentEditorView: View {
 	@ViewBuilder
 	private var banners: some View {
 		if let error = store.saveError {
-			HomerAgentDismissableBanner(onDismiss: { store.send(.saveErrorDismissed) }) {
+			HomerAgentDismissableBanner(tint: .red, onDismiss: { store.send(.saveErrorDismissed) }) {
 				Label(error, systemImage: "exclamationmark.triangle.fill")
 					.foregroundStyle(.red)
 					.textSelection(.enabled)
 			}
-			.background(Color.red.opacity(0.08))
-			Divider()
 		}
 		if let errors = store.schemaErrors {
-			HomerAgentDismissableBanner(onDismiss: { store.send(.schemaErrorsDismissed) }) {
+			HomerAgentDismissableBanner(tint: .red, onDismiss: { store.send(.schemaErrorsDismissed) }) {
 				VStack(alignment: .leading, spacing: 3) {
 					Text("Schema validation failed:")
 						.fontWeight(.medium)
@@ -138,8 +136,6 @@ struct HomerAgentEditorView: View {
 				}
 				.foregroundStyle(.red)
 			}
-			.background(Color.red.opacity(0.08))
-			Divider()
 		}
 	}
 

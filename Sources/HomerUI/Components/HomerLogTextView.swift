@@ -6,12 +6,7 @@ package struct HomerLiveBadge: View {
 	package init() {}
 
 	package var body: some View {
-		Text("Live")
-			.scaledFont(.caption)
-			.fontWeight(.semibold)
-			.padding(.horizontal, 6)
-			.padding(.vertical, 1)
-			.background(Color.secondary.opacity(0.18), in: Capsule())
+		HomerPill("Live", color: .red)
 	}
 }
 
