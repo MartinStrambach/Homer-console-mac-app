@@ -8,16 +8,105 @@ import SwiftUI
 /// "Scheduled", description, Edit and Run, the script count, the cron with its next and last
 /// run, and the declared parameters — as chips, each one's details in its tooltip; the agent's
 /// page lists them in full.
+///
+/// Collapsed, every card is the same 200 pt, so the grid's rows line up with no holes: one line
+/// of name, four of description (kept even when shorter), and the counts and one line of
+/// schedule at its foot. A moment under the pointer, the card pops forward and grows over the cards around it to show
+/// everything — the whole description, the cron with its last run, the parameters. The grid
+/// keeps the collapsed card's place, so nothing moves.
 struct HomerAgentCard: View {
 	let agent: HomerAgent
 	let user: HomerUser
 	let store: StoreOf<HomerAgentsReducer>
 
-	var body: some View {
-		VStack(alignment: .leading, spacing: 12) {
-			header
+	/// How long the pointer rests on a card before it expands: passing over the grid does not
+	/// set every card popping.
+	private static let expandDelay: Duration = .milliseconds(350)
 
-			HStack(spacing: 14) {
+	/// The collapsed card's height, the same for every card so the grid's rows line up. It grows
+	/// only when larger text no longer fits.
+	private static let collapsedMinHeight: CGFloat = 200
+
+	@State
+	private var isHovered = false
+	@State
+	private var isExpanded = false
+	/// The collapsed card's height, which the expanded one never goes below.
+	@State
+	private var collapsedHeight: CGFloat = 0
+	/// Whether the card sits in the lower half of the visible grid: it grows upward then, rather
+	/// than past the scroll view's bottom edge, which would cut it off.
+	@State
+	private var expandsUpward = false
+
+	var body: some View {
+		// The collapsed card, invisible, holds the grid cell; the card itself is drawn over it and
+		// can outgrow it.
+		content(isExpanded: false)
+			.hidden()
+			.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapsedHeight = $0 }
+			.onGeometryChange(for: Bool.self) { proxy in
+				guard let visible = proxy.bounds(of: .scrollView) else {
+					return false
+				}
+				return proxy.size.height / 2 > visible.midY
+			} action: { expandsUpward = $0 }
+			.overlay(alignment: expandsUpward ? .bottom : .top) {
+				card
+			}
+			.zIndex(isExpanded ? 1 : 0)
+			.task(id: isHovered) {
+				guard isHovered else {
+					withAnimation(.snappy(duration: 0.2)) { isExpanded = false }
+					return
+				}
+				guard (try? await Task.sleep(for: Self.expandDelay)) != nil else {
+					return
+				}
+				withAnimation(.snappy(duration: 0.25)) { isExpanded = true }
+			}
+	}
+
+	private var card: some View {
+		content(isExpanded: isExpanded)
+			.frame(maxWidth: .infinity, minHeight: collapsedHeight, alignment: .topLeading)
+			.fixedSize(horizontal: false, vertical: true)
+			.homerHoverCard()
+			.shadow(color: .black.opacity(isExpanded ? 0.18 : 0), radius: 16, y: 6)
+			.scaleEffect(isExpanded ? 1.03 : 1, anchor: expandsUpward ? .bottom : .top)
+			.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
+			.onHover { isHovered = $0 }
+			// The whole card opens the agent; its own buttons (graph, Edit, Run, the last run) still
+			// take their clicks first.
+			.onTapGesture {
+				store.send(.agentTapped(agentName: agent.name))
+			}
+			.help("Open the agent: its parameters, workflow graph and run history")
+			.accessibilityAction(named: "Open Agent") {
+				store.send(.agentTapped(agentName: agent.name))
+			}
+			.contextMenu {
+				contextMenu
+			}
+	}
+
+	private func content(isExpanded: Bool) -> some View {
+		VStack(alignment: .leading, spacing: 10) {
+			header(isExpanded: isExpanded)
+
+			if isExpanded {
+				description
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			else {
+				description
+					.lineLimit(4, reservesSpace: true)
+			}
+
+			// The counts and the schedule sit at the collapsed card's foot.
+			Spacer(minLength: 0)
+
+			HStack(spacing: 12) {
 				Label("\(agent.scriptCount) \(agent.scriptCount == 1 ? "script" : "scripts")", systemImage: "terminal")
 				Label(
 					agent.inputs.isEmpty
@@ -26,57 +115,87 @@ struct HomerAgentCard: View {
 					systemImage: "slider.horizontal.3"
 				)
 			}
-			.scaledFont(.callout)
+			.scaledFont(.caption)
 			.foregroundStyle(.secondary)
+			.lineLimit(1)
 
-			if let cron = agent.cron {
+			if isExpanded, let cron = agent.cron {
 				cronBlock(cron)
 			}
+			else {
+				scheduleLine
+			}
 
-			parameters
+			if isExpanded {
+				parameters
+			}
 		}
-		.padding(16)
-		.frame(maxWidth: .infinity, alignment: .topLeading)
-		.homerHoverCard()
-		.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
-		// The whole card opens the agent; its own buttons (graph, Edit, Run, the last run) still
-		// take their clicks first.
-		.onTapGesture {
-			store.send(.agentTapped(agentName: agent.name))
+		.padding(.horizontal, 12)
+		.padding(.vertical, 14)
+		.frame(maxWidth: .infinity, minHeight: Self.collapsedMinHeight, alignment: .topLeading)
+	}
+
+	private var description: some View {
+		Group {
+			if let description = agent.description, !description.isEmpty {
+				Text(description)
+					.foregroundStyle(.secondary)
+			}
+			else {
+				Text("No description")
+					.foregroundStyle(.tertiary)
+			}
 		}
-		.help("Open the agent: its parameters, workflow graph and run history")
-		.accessibilityAction(named: "Open Agent") {
-			store.send(.agentTapped(agentName: agent.name))
+		.scaledFont(.callout)
+	}
+
+	/// The collapsed card's schedule: the cron and the next run on one line, or that it has none.
+	@ViewBuilder
+	private var scheduleLine: some View {
+		if let cron = agent.cron {
+			Label {
+				HStack(spacing: 4) {
+					Text(cron.expression)
+						.scaledFont(.caption, design: .monospaced)
+						.foregroundStyle(.primary)
+					if let nextRunAt = cron.nextRunAt {
+						Text("· Next")
+						HomerScheduleCountdownText(epochSeconds: nextRunAt)
+					}
+				}
+				.lineLimit(1)
+			} icon: {
+				Image(systemName: "clock")
+					.foregroundStyle(.purple)
+			}
+			.scaledFont(.caption)
+			.foregroundStyle(.secondary)
 		}
-		.contextMenu {
-			contextMenu
+		else {
+			Label("Runs on demand", systemImage: "hand.tap")
+				.scaledFont(.caption)
+				.foregroundStyle(.tertiary)
+				.lineLimit(1)
 		}
 	}
 
-	private var header: some View {
-		HStack(alignment: .top, spacing: 10) {
+	private func header(isExpanded: Bool) -> some View {
+		HStack(alignment: .center, spacing: 10) {
 			HomerIconTile(
 				systemImage: agent.cron == nil ? "square.stack.3d.up.fill" : "calendar.badge.clock",
 				color: agent.cron == nil ? .accentColor : .purple,
-				size: 30
+				size: 26
 			)
 
-			VStack(alignment: .leading, spacing: 4) {
-				HStack(spacing: 8) {
-					Text(agent.name)
-						.scaledFont(.title3)
-						.fontWeight(.semibold)
-						.multilineTextAlignment(.leading)
+			HStack(spacing: 6) {
+				Text(agent.name)
+					.scaledFont(.headline)
+					.fontWeight(.semibold)
+					.multilineTextAlignment(.leading)
+					.lineLimit(isExpanded ? nil : 1)
 
-					if agent.cron != nil {
-						HomerPill("Scheduled", color: .purple, systemImage: "clock")
-					}
-				}
-				if let description = agent.description, !description.isEmpty {
-					Text(description)
-						.scaledFont(.callout)
-						.foregroundStyle(.secondary)
-						.fixedSize(horizontal: false, vertical: true)
+				if agent.cron != nil {
+					HomerPill("Scheduled", color: .purple, systemImage: "clock")
 				}
 			}
 
@@ -111,8 +230,9 @@ struct HomerAgentCard: View {
 		}
 	}
 
+	/// The expression and timezone, then the next and last runs side by side.
 	private func cronBlock(_ cron: HomerAgent.Cron) -> some View {
-		VStack(alignment: .leading, spacing: 4) {
+		VStack(alignment: .leading, spacing: 3) {
 			Label {
 				HStack(spacing: 4) {
 					Text(cron.expression)
@@ -127,42 +247,45 @@ struct HomerAgentCard: View {
 				Image(systemName: "clock")
 					.foregroundStyle(.purple)
 			}
-			.scaledFont(.caption)
-			if let nextRunAt = cron.nextRunAt {
-				Label {
-					HStack(spacing: 4) {
-						Text("Next")
-						HomerScheduleCountdownText(epochSeconds: nextRunAt)
-					}
-				} icon: {
-					Image(systemName: "calendar")
-				}
-				.scaledFont(.caption)
-				.help(HomerFormat.timestamp(nextRunAt))
-			}
-			if let lastRunAt = cron.lastRunAt {
-				Label {
-					HStack(spacing: 4) {
-						Text("Last")
-						if let processId = cron.lastRunProcessId {
-							Button(HomerFormat.timestamp(lastRunAt)) {
-								store.send(.processTapped(processId: processId))
+			if cron.nextRunAt != nil || cron.lastRunAt != nil {
+				HomerFlowLayout(spacing: 12) {
+					if let nextRunAt = cron.nextRunAt {
+						Label {
+							HStack(spacing: 4) {
+								Text("Next")
+								HomerScheduleCountdownText(epochSeconds: nextRunAt)
 							}
-							.buttonStyle(.link)
-							.help("Open process \(processId)")
+						} icon: {
+							Image(systemName: "calendar")
 						}
-						else {
-							Text(HomerFormat.timestamp(lastRunAt))
+						.help(HomerFormat.timestamp(nextRunAt))
+					}
+					if let lastRunAt = cron.lastRunAt {
+						Label {
+							HStack(spacing: 4) {
+								Text("Last")
+								if let processId = cron.lastRunProcessId {
+									Button(HomerFormat.timestamp(lastRunAt)) {
+										store.send(.processTapped(processId: processId))
+									}
+									.buttonStyle(.link)
+									.help("Open process \(processId)")
+								}
+								else {
+									Text(HomerFormat.timestamp(lastRunAt))
+								}
+							}
+						} icon: {
+							Image(systemName: "clock.arrow.circlepath")
 						}
 					}
-				} icon: {
-					Image(systemName: "clock.arrow.circlepath")
 				}
-				.scaledFont(.caption)
 			}
 		}
+		.scaledFont(.caption)
 		.foregroundStyle(.secondary)
-		.padding(10)
+		.padding(.horizontal, 8)
+		.padding(.vertical, 6)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.homerInset(tint: .purple)
 	}

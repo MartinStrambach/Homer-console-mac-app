@@ -15,6 +15,14 @@ package struct HomerAgentsView: View {
 
 	@FocusState
 	private var isSearchFocused: Bool
+	/// The grid's width, for how many columns of cards fit.
+	@State
+	private var gridWidth: CGFloat = 0
+
+	/// At most this many cards to a row, however wide the window: wider cards rather than more.
+	private static let maxColumns = 4
+	private static let minCardWidth: CGFloat = 280
+	private static let gridSpacing: CGFloat = 10
 
 	package init(store: StoreOf<HomerAgentsReducer>, user: HomerUser) {
 		self.store = store
@@ -152,18 +160,30 @@ package struct HomerAgentsView: View {
 		}
 		else {
 			ScrollView {
+				// Collapsed cards are all one height, so the rows line up; a card shows the rest of
+				// itself over its neighbours under the pointer (`HomerAgentCard`).
 				LazyVGrid(
-					columns: [GridItem(.adaptive(minimum: 300), spacing: 12, alignment: .top)],
+					columns: Array(
+						repeating: GridItem(.flexible(), spacing: Self.gridSpacing, alignment: .top),
+						count: columnCount
+					),
 					alignment: .leading,
-					spacing: 12
+					spacing: Self.gridSpacing
 				) {
 					ForEach(store.filteredAgents) { agent in
 						HomerAgentCard(agent: agent, user: user, store: store)
 					}
 				}
-				.padding()
+				.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
+				.padding(12)
 			}
 		}
+	}
+
+	/// As many columns as fit at `minCardWidth`, from one up to `maxColumns`.
+	private var columnCount: Int {
+		let fitting = Int((gridWidth + Self.gridSpacing) / (Self.minCardWidth + Self.gridSpacing))
+		return min(Self.maxColumns, max(1, fitting))
 	}
 
 	private var emptyDescription: String {
