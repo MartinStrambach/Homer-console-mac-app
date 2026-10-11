@@ -39,6 +39,15 @@ struct HomerAgentCard: View {
 		.frame(maxWidth: .infinity, alignment: .topLeading)
 		.homerHoverCard()
 		.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
+		// The whole card opens the agent; its own buttons (graph, Edit, Run, the last run) still
+		// take their clicks first.
+		.onTapGesture {
+			store.send(.agentTapped(agentName: agent.name))
+		}
+		.help("Open the agent: its parameters, workflow graph and run history")
+		.accessibilityAction(named: "Open Agent") {
+			store.send(.agentTapped(agentName: agent.name))
+		}
 		.contextMenu {
 			contextMenu
 		}
@@ -54,16 +63,10 @@ struct HomerAgentCard: View {
 
 			VStack(alignment: .leading, spacing: 4) {
 				HStack(spacing: 8) {
-					Button {
-						store.send(.agentTapped(agentName: agent.name))
-					} label: {
-						Text(agent.name)
-							.scaledFont(.title3)
-							.fontWeight(.semibold)
-							.multilineTextAlignment(.leading)
-					}
-					.buttonStyle(.link)
-					.help("Open the agent: its parameters, workflow graph and run history")
+					Text(agent.name)
+						.scaledFont(.title3)
+						.fontWeight(.semibold)
+						.multilineTextAlignment(.leading)
 
 					if agent.cron != nil {
 						HomerPill("Scheduled", color: .purple, systemImage: "clock")
