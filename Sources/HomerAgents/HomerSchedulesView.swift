@@ -110,41 +110,90 @@ package struct HomerSchedulesView: View {
 					Text("\(schedules.count)")
 						.monospacedDigit()
 				}
-				HomerStat("Next up", systemImage: "clock") {
-					if let next, let nextRunAt = next.cron?.nextRunAt {
-						HStack(alignment: .firstTextBaseline, spacing: 6) {
-							Text(next.name)
-								.truncationMode(.middle)
-							HomerScheduleCountdownText(epochSeconds: nextRunAt)
-								.scaledFont(.callout)
-								.foregroundStyle(.secondary)
+				openingAgent(next?.name, at: next?.cron?.nextRunAt) {
+					HomerStat("Next up", systemImage: "clock") {
+						if let next, let nextRunAt = next.cron?.nextRunAt {
+							HStack(alignment: .firstTextBaseline, spacing: 6) {
+								Text(next.name)
+									.truncationMode(.middle)
+								HomerScheduleCountdownText(epochSeconds: nextRunAt)
+									.scaledFont(.callout)
+									.foregroundStyle(.secondary)
+							}
+						}
+						else {
+							Text(verbatim: "—")
 						}
 					}
-					else {
-						Text(verbatim: "—")
-					}
 				}
-				.help(next?.cron?.nextRunAt.map { HomerFormat.timestamp($0) } ?? "")
 				HomerStat("Due within 24 h", systemImage: "calendar") {
 					Text("\(dueWithinDay)")
 						.monospacedDigit()
 				}
-				HomerStat("Last fired", systemImage: "clock.arrow.circlepath") {
-					if let lastFired {
-						HStack(alignment: .firstTextBaseline, spacing: 6) {
-							Text(lastFired.name)
-								.truncationMode(.middle)
-							HomerScheduleElapsedText(epochSeconds: lastFired.at)
-								.scaledFont(.callout)
-								.foregroundStyle(.secondary)
+				openingAgent(lastFired?.name, at: lastFired?.at) {
+					HomerStat("Last fired", systemImage: "clock.arrow.circlepath") {
+						if let lastFired {
+							HStack(alignment: .firstTextBaseline, spacing: 6) {
+								Text(lastFired.name)
+									.truncationMode(.middle)
+								HomerScheduleElapsedText(epochSeconds: lastFired.at)
+									.scaledFont(.callout)
+									.foregroundStyle(.secondary)
+							}
+						}
+						else {
+							Text("Never")
 						}
 					}
-					else {
-						Text("Never")
-					}
 				}
-				.help(lastFired.map { HomerFormat.timestamp($0.at) } ?? "")
 			}
+		}
+	}
+	/// A stat tile naming an agent, as a button opening it — or the tile alone when it names none.
+	@ViewBuilder
+	private func openingAgent(
+		_ agentName: String?,
+		at epochSeconds: Double?,
+		@ViewBuilder tile: () -> some View
+	) -> some View {
+		if let agentName {
+			Button {
+				store.send(.agentTapped(agentName: agentName))
+			} label: {
+				tile()
+			}
+			.buttonStyle(HomerStatButtonStyle())
+			.help("Open \(agentName)" + (epochSeconds.map { " — \(HomerFormat.timestamp($0))" } ?? ""))
+		}
+		else {
+			tile()
+		}
+	}
+}
+
+/// A stat tile as a button: its edge tints under the pointer, as a card's does, and it dims
+/// while pressed.
+private struct HomerStatButtonStyle: ButtonStyle {
+	func makeBody(configuration: Configuration) -> some View {
+		Tile(configuration: configuration)
+	}
+
+	private struct Tile: View {
+		let configuration: Configuration
+
+		@State
+		private var isHovered = false
+
+		var body: some View {
+			configuration.label
+				.overlay {
+					RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous)
+						.strokeBorder(Color.accentColor.opacity(isHovered ? 0.55 : 0))
+				}
+				.opacity(configuration.isPressed ? 0.7 : 1)
+				.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
+				.animation(.snappy(duration: 0.2), value: isHovered)
+				.onHover { isHovered = $0 }
 		}
 	}
 }
