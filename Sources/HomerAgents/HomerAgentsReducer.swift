@@ -331,11 +331,12 @@ public struct HomerAgentsReducer: Sendable {
 					state.detail?.isShown = false
 					hideDetail = .cancel(id: HomerAgentDetailReducer.CancelID.polling)
 				}
-				// Another agent's editor may have been following a debug run.
-				return .concatenate(
+				// Another agent's editor may have been following a debug run. Its cancellations take
+				// effect as the effect starts, the `.run` after them, so they cannot cancel the new load.
+				return .merge(
 					HomerAgentEditorReducer.cancelEffects(),
 					hideDetail,
-					.send(.editor(.start))
+					.run { send in await send(.editor(.start)) }
 				)
 
 			case .editor(.delegate(.back)):
@@ -363,7 +364,7 @@ public struct HomerAgentsReducer: Sendable {
 				state.newAgent = nil
 				// The editor finds the agent in the list once it is read again: the server loaded
 				// it on creation.
-				return .concatenate(
+				return .merge(
 					.send(.editTapped(agentName: agentName)),
 					state.isShown ? poll(state) : .none
 				)

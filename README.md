@@ -70,7 +70,7 @@ xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination
 
 - Swift 6.2 tools, Swift 6 language mode, macOS 26+, Xcode 26.2+
 - `swift build`, `swift test` (Swift Testing). Warnings are errors in every target, tests included, and `MemberImportVisibility` is on (both in the loop at the end of `Package.swift`): a file imports every module whose members it uses
-- Bridge Commander builds this package with TCA's `ComposableArchitecture2Deprecations` trait on, which `swift build` here does not: after a change, also build Bridge Commander against the checkout (point its dependency at the local path) before tagging a release
+- TCA is built with the traits Bridge Commander enables (`ComposableArchitecture2Deprecations`, `ComposableArchitecture2DeprecationOverloads`, on the dependency in `Package.swift`), so `swift build` here rejects the deprecated APIs Bridge Commander's build rejects — a host's traits are unified with these, and Bridge Commander builds a local checkout with warnings as errors. Keep the two lists the same
 - A release is a semver tag, made by `make publish` with the app's release (RELEASE.md) — app and package share one version line. Bridge Commander picks it up with `File ▸ Packages ▸ Update to Latest Package Versions` or by raising its requirement
 - `TestStore.skipInFlightEffects()` reports the effects it skips (the endless polling loops) as Swift Testing *known issues* — TCA's "skipped assertions". They are expected, not failures: the run still passes
 

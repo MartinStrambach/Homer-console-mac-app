@@ -32,7 +32,7 @@ The module layout, how a host embeds the console and the notes that hold across 
 - Warnings are errors: every target, tests included (the loop at the end of `Package.swift`; a new target gets it automatically)
 - Imports are explicit: the same loop enables `MemberImportVisibility` (and the app target `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY`, as Bridge Commander does), so a file imports every module whose members it uses — another file's import, or a module imported only transitively, no longer makes them visible
 - In `TestStore` assertions, mutate `@Shared` state as `$0.$x.withLock { $0 = … }`
-- Bridge Commander builds the package with TCA's `ComposableArchitecture2Deprecations` trait on, which a package build does not: build Bridge Commander against the checkout before tagging a release
+- TCA is built with Bridge Commander's traits (`ComposableArchitecture2Deprecations`, `ComposableArchitecture2DeprecationOverloads`, on the dependency in `Package.swift`), so deprecated TCA APIs are errors here as there — keep the lists the same
 - App: `xcodebuild -project App/HomerConsole.xcodeproj -scheme HomerConsole -destination 'platform=macOS' build` (add `-skipMacroValidation` from the command line)
 - Known issues in a test run come from `skipInFlightEffects()` (TCA reports skipped effects that way) and are expected
 
