@@ -269,6 +269,8 @@ package struct HomerSchedulesView: View {
 			}
 			.width(min: 80, ideal: 90)
 		}
+		// Stripes would run on past the last row and fill the page; the pills carry the rows.
+		.alternatingRowBackgrounds(.disabled)
 		.contextMenu(forSelectionType: HomerAgent.ID.self) { ids in
 			if let id = ids.first, let agent = store.agents[id: id] {
 				contextMenu(for: agent)

@@ -119,7 +119,7 @@ struct HomerProcessListView: View {
 				Circle()
 					.fill(isOn ? Color.white : status.color)
 					.frame(width: 6, height: 6)
-				Text(status.rawValue)
+				Text(status.title)
 			}
 			.scaledFont(.caption)
 			.fontWeight(.semibold)
@@ -279,6 +279,8 @@ struct HomerProcessListView: View {
 			}
 			.width(min: 70, ideal: 80)
 		}
+		// Stripes would run on past the last row and fill the page; the pills carry the rows.
+		.alternatingRowBackgrounds(.disabled)
 		.contextMenu(forSelectionType: HomerProcess.ID.self) { ids in
 			if let id = ids.first, let process = store.processes[id: id] {
 				contextMenu(for: process)
@@ -314,10 +316,14 @@ struct HomerProcessListView: View {
 				.controlSize(.small)
 		}
 		else if process.isKillable, store.user?.canKill(process) == true {
-			Button("Kill", role: .destructive) { store.send(.killTapped(processId: process.id)) }
-				.buttonStyle(.scaledBordered)
-				.controlSize(.small)
-				.tint(.red)
+			Button(role: .destructive) {
+				store.send(.killTapped(processId: process.id))
+			} label: {
+				Label("Kill", systemImage: "xmark.octagon")
+					.foregroundStyle(.red)
+			}
+			.buttonStyle(.scaledBordered)
+			.controlSize(.small)
 		}
 		else if process.isRetryable, store.user?.canRetry(process) == true {
 			Button {

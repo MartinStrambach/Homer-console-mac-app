@@ -70,6 +70,9 @@ package struct HomerContinuationsView: View {
 					}
 				}
 				.padding()
+				// A readable measure on a wide window, as the Costs page.
+				.frame(maxWidth: 900, alignment: .leading)
+				.frame(maxWidth: .infinity)
 			}
 		}
 	}
@@ -105,50 +108,21 @@ struct HomerContinuationCard: View {
 		VStack(alignment: .leading, spacing: 8) {
 			HStack(spacing: 8) {
 				HomerContinuationStatusBadge(status: continuation.status)
-				Text(HomerFormat.timestamp(continuation.createdAt))
-					.scaledFont(.caption, design: .monospaced)
-					.foregroundStyle(.secondary)
-					.help("Created")
+				timestamp("Created", continuation.createdAt)
 				Spacer()
+				// The run it started is in the chain; when, here.
+				if continuation.status == .dispatched, let firedAt = continuation.firedAt {
+					timestamp("Started", firedAt)
+				}
+				if continuation.isCancellable, let expiresAt = continuation.expiresAt {
+					timestamp("Expires", expiresAt)
+				}
 			}
 
-			Text(sentence)
-				.scaledFont(.body)
-				.fixedSize(horizontal: false, vertical: true)
-
-			Text(origin)
-				.scaledFont(.callout)
-				.foregroundStyle(.secondary)
-
-			if let started {
-				Text(started)
-					.scaledFont(.callout)
-					.foregroundStyle(.secondary)
-			}
-
-			if continuation.status == .failed {
-				Text("Continuation failed: \(continuation.error ?? "")")
-					.scaledFont(.callout)
-					.foregroundStyle(.red)
-					.textSelection(.enabled)
-					.fixedSize(horizontal: false, vertical: true)
-			}
-
-			if continuation.isCancellable, let expiresAt = continuation.expiresAt {
-				Text("Expires \(HomerFormat.timestamp(expiresAt)).")
-					.scaledFont(.caption)
-					.foregroundStyle(.secondary)
-			}
-
-			if continuation.isCancellable {
-				HStack {
-					if let error = store.cancelErrors[continuation.id] {
-						Text(error)
-							.scaledFont(.callout)
-							.foregroundStyle(.red)
-							.fixedSize(horizontal: false, vertical: true)
-					}
-					Spacer()
+			HStack(alignment: .center, spacing: 12) {
+				chain
+				Spacer(minLength: 0)
+				if continuation.isCancellable {
 					if isCancelling {
 						ProgressView()
 							.controlSize(.small)
@@ -162,6 +136,28 @@ struct HomerContinuationCard: View {
 					.disabled(isCancelling)
 					.help("Stop \(continuation.agentName) from starting when run #\(continuation.watchedProcessId) finishes")
 				}
+			}
+
+			if continuation.isCancellable, let error = store.cancelErrors[continuation.id] {
+				Text(error)
+					.scaledFont(.callout)
+					.foregroundStyle(.red)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+
+			if continuation.status == .failed {
+				Label {
+					Text("Continuation failed: \(continuation.error ?? "")")
+						.textSelection(.enabled)
+						.fixedSize(horizontal: false, vertical: true)
+				} icon: {
+					Image(systemName: "exclamationmark.triangle.fill")
+				}
+				.scaledFont(.callout)
+				.foregroundStyle(.red)
+				.padding(10)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.homerInset(tint: .red)
 			}
 		}
 		.padding(16)
@@ -181,47 +177,72 @@ struct HomerContinuationCard: View {
 		}
 	}
 
+	// MARK: - Chain
+
+	/// The continuation as a chain: the run that parked it, the run it waits for, and the agent
+	/// it starts — with the run that start made, once dispatched. Wraps on a narrow card.
+	private var chain: some View {
+		HomerFlowLayout(spacing: 8) {
+			node("Origin", systemImage: "arrow.turn.down.right", Self.agentText(continuation.originAgentName, run: continuation.originProcessId))
+			arrow
+			node("Waits for", systemImage: "hourglass", Self.agentText("Run", run: continuation.watchedProcessId))
+			arrow
+			node(
+				continuation.status == .dispatched ? "Started" : "Then starts",
+				systemImage: "play.fill",
+				Self.agentText(continuation.agentName, run: continuation.firedProcessId)
+			)
+		}
+		.accessibilityElement(children: .combine)
+		.accessibilityLabel(
+			"When watched run \(continuation.watchedProcessId) finishes, start \(continuation.agentName). Origin: \(continuation.originAgentName), run \(continuation.originProcessId)."
+		)
+	}
+
+	private func node(_ caption: String, systemImage: String, _ text: AttributedString) -> some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Label(caption, systemImage: systemImage)
+				.scaledFont(.caption)
+				.foregroundStyle(.secondary)
+			Text(text)
+				.scaledFont(.callout)
+				.lineLimit(1)
+		}
+		.padding(.horizontal, 10)
+		.padding(.vertical, 6)
+		.homerInset()
+	}
+
+	private var arrow: some View {
+		Image(systemName: "arrow.right")
+			.scaledFont(.callout)
+			.foregroundStyle(.tertiary)
+			.padding(.vertical, 14)
+	}
+
+	/// "**starter** #7" — the run number a link the card's `openURL` action turns into
+	/// `processTapped`.
+	private static func agentText(_ name: String, run processId: Int?) -> AttributedString {
+		var text = AttributedString(name)
+		text.inlinePresentationIntent = .stronglyEmphasized
+		if let processId {
+			text += AttributedString(" ")
+			text += runLink(processId)
+		}
+		return text
+	}
+
 	// MARK: - Text
 
-	/// "When watched run #12 finishes, start **follow-up**." The run numbers are links the
-	/// card's `openURL` action turns into `processTapped`, so the sentence wraps as one text.
-	private var sentence: AttributedString {
-		var text = AttributedString("When watched run ")
-		text += Self.runLink(continuation.watchedProcessId)
-		text += AttributedString(" finishes, start ")
-		text += Self.emphasized(continuation.agentName)
-		text += AttributedString(".")
-		return text
-	}
-
-	/// "Origin: **starter** (#7)"
-	private var origin: AttributedString {
-		var text = AttributedString("Origin: ")
-		text += Self.emphasized(continuation.originAgentName)
-		text += AttributedString(" (")
-		text += Self.runLink(continuation.originProcessId)
-		text += AttributedString(")")
-		return text
-	}
-
-	/// "Started run #99 07.10.26 18:52:55." — a dispatched continuation's run.
-	private var started: AttributedString? {
-		guard continuation.status == .dispatched, let firedProcessId = continuation.firedProcessId else {
-			return nil
+	/// "Created 07.10.26 18:52:55" in the card's header.
+	private func timestamp(_ title: String, _ epochSeconds: Double) -> some View {
+		HStack(spacing: 4) {
+			Text(title)
+			Text(HomerFormat.timestamp(epochSeconds))
+				.scaledFont(.caption, design: .monospaced)
 		}
-		var text = AttributedString("Started run ")
-		text += Self.runLink(firedProcessId)
-		if let firedAt = continuation.firedAt {
-			text += AttributedString("  \(HomerFormat.timestamp(firedAt))")
-		}
-		text += AttributedString(".")
-		return text
-	}
-
-	private static func emphasized(_ string: String) -> AttributedString {
-		var text = AttributedString(string)
-		text.inlinePresentationIntent = .stronglyEmphasized
-		return text
+		.scaledFont(.caption)
+		.foregroundStyle(.secondary)
 	}
 
 	private static func runLink(_ processId: Int) -> AttributedString {

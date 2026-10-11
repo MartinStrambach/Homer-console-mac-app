@@ -18,6 +18,10 @@ package struct HomerProcessDetailView<Questions: View>: View {
 	@ViewBuilder
 	let questions: (_ processId: Int) -> Questions
 
+	/// The content's width, which decides between one column and two.
+	@State
+	private var contentWidth: CGFloat = 0
+
 	package init(
 		store: StoreOf<HomerProcessDetailReducer>,
 		backTitle: String,
@@ -81,26 +85,77 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		.padding(.top, 8)
 	}
 
+	/// The run's icon, number and status, its agent and owner, and the actions.
 	private var header: some View {
-		HStack(spacing: 10) {
-			Text("Process #\(store.processId)")
-				.scaledFont(.title3)
-				.fontWeight(.semibold)
-				.textSelection(.enabled)
-			if let process = store.process {
-				HomerStatusBadge(status: process.status)
-			}
-			if store.process == nil, store.loadError == nil {
-				ProgressView()
-					.controlSize(.small)
+		HStack(alignment: .center, spacing: 14) {
+			HomerIconTile(
+				systemImage: store.process?.status.systemImage ?? "doc.text.magnifyingglass",
+				color: store.process?.status.color ?? .gray,
+				size: 44
+			)
+
+			VStack(alignment: .leading, spacing: 4) {
+				HStack(spacing: 8) {
+					Text("Process #\(store.processId)")
+						.scaledFont(.title2)
+						.fontWeight(.bold)
+						.textSelection(.enabled)
+					if let process = store.process {
+						HomerStatusBadge(status: process.status)
+					}
+					if store.process == nil, store.loadError == nil {
+						ProgressView()
+							.controlSize(.small)
+					}
+				}
+				if let process = store.process {
+					subtitle(process)
+				}
 			}
 
-			Spacer()
+			Spacer(minLength: 12)
 
-			actions
+			HStack(spacing: 8) {
+				actions
+			}
 		}
 		.padding(.horizontal)
-		.padding(.vertical, 12)
+		.padding(.top, 10)
+		.padding(.bottom, 14)
+	}
+
+	/// The agent and who started the run, then its tags and links.
+	private func subtitle(_ process: HomerProcess) -> some View {
+		HomerFlowLayout(spacing: 10) {
+			HStack(spacing: 4) {
+				Text(process.agentName)
+					.fontWeight(.semibold)
+					.textSelection(.enabled)
+				if let owner = process.owner {
+					Text("· by \(owner)")
+						.foregroundStyle(.secondary)
+				}
+			}
+			if let tags = process.tags, !tags.isEmpty {
+				ForEach(tags, id: \.self) { tag in
+					HomerChip(tag, monospaced: true)
+				}
+			}
+			if let parent = process.parentProcessId {
+				Button {
+					store.send(.processLinkTapped(processId: parent))
+				} label: {
+					Label("Parent #\(parent)", systemImage: "arrow.turn.left.up")
+				}
+				.buttonStyle(.link)
+			}
+			if let trace = process.langfuseTraceUrl.flatMap(URL.init(string:)) {
+				Link(destination: trace) {
+					Label("Langfuse trace", systemImage: "arrow.up.right.square")
+				}
+			}
+		}
+		.scaledFont(.callout)
 	}
 
 	@ViewBuilder
@@ -139,9 +194,13 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			.help("Start a new run from the workflow's last checkpoint")
 		}
 		if store.canKill {
-			Button("Kill Process", role: .destructive) { store.send(.killTapped) }
-				.buttonStyle(.scaledBordered)
-				.tint(.red)
+			Button(role: .destructive) {
+				store.send(.killTapped)
+			} label: {
+				Label("Kill Process", systemImage: "xmark.octagon")
+					.foregroundStyle(.red)
+			}
+			.buttonStyle(.scaledBordered)
 				.disabled(store.actionInFlight != nil)
 		}
 	}
@@ -154,16 +213,36 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// A plain stack: a run has a handful of sections and executions.
 			ScrollView {
 				VStack(alignment: .leading, spacing: 16) {
-					summary(process)
-					if let runner = process.runner {
-						HomerRunnerPanel(runner: runner)
+					stats(process)
+					if contentWidth >= Self.twoColumnWidth {
+						// The run's work beside its history and where it ran.
+						HStack(alignment: .top, spacing: 16) {
+							VStack(alignment: .leading, spacing: 16) {
+								questions(store.processId)
+								executions(process)
+							}
+							.frame(maxWidth: .infinity)
+							VStack(alignment: .leading, spacing: 16) {
+								timeline(process)
+								if let runner = process.runner {
+									HomerRunnerPanel(runner: runner)
+								}
+							}
+							.frame(width: 340)
+						}
 					}
-					questions(store.processId)
-					timeline(process)
-					executions(process)
+					else {
+						if let runner = process.runner {
+							HomerRunnerPanel(runner: runner)
+						}
+						questions(store.processId)
+						timeline(process)
+						executions(process)
+					}
 				}
 				.padding()
 				.frame(maxWidth: .infinity, alignment: .leading)
+				.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
 			}
 		}
 		else if store.loadError == nil {
@@ -176,73 +255,116 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		}
 	}
 
-	private func summary(_ process: HomerProcess) -> some View {
-		HomerFlowLayout(spacing: 14) {
-			Text(process.agentName)
-				.scaledFont(.title3)
-				.textSelection(.enabled)
-			if let owner = process.owner {
-				Text("by \(owner)")
-					.scaledFont(.callout)
-					.foregroundStyle(.secondary)
+	/// From this wide on, the timeline and runner move to a column of their own.
+	private static var twoColumnWidth: CGFloat {
+		980
+	}
+
+	/// How long it ran, what it cost, its commands and when it started.
+	private func stats(_ process: HomerProcess) -> some View {
+		HomerStatGrid {
+			HomerStat("Duration", systemImage: "timer") {
+				if let start = process.history.first?.timestamp {
+					if process.status.hasEnded, let end = process.history.last?.timestamp {
+						Text(HomerFormat.duration(from: start, to: end))
+							.monospacedDigit()
+					}
+					else {
+						TimelineView(.periodic(from: .now, by: 1)) { context in
+							Text(HomerFormat.duration(from: start, to: context.date.timeIntervalSince1970))
+								.monospacedDigit()
+						}
+					}
+				}
+				else {
+					Text(verbatim: "—")
+				}
 			}
 			// From the cost ledger, not the output: still there once the artifacts are purged.
-			if let cost = process.costUsd, cost > 0 {
-				Text("\(Text("cost").foregroundStyle(.secondary)) \(Text(HomerFormat.cost(cost)).fontWeight(.medium))")
-					.scaledFont(.callout)
-			}
-			if let tags = process.tags, !tags.isEmpty {
-				ForEach(tags, id: \.self) { tag in
-					HomerChip(tag, monospaced: true)
+			HomerStat("Cost", systemImage: "dollarsign.circle") {
+				if let cost = process.costUsd, cost > 0 {
+					Text(HomerFormat.cost(cost))
+						.monospacedDigit()
+				}
+				else {
+					Text(verbatim: "—")
 				}
 			}
-			if let parent = process.parentProcessId {
-				Button("Parent #\(parent)") { store.send(.processLinkTapped(processId: parent)) }
-					.buttonStyle(.link)
-					.scaledFont(.callout)
-			}
-			if let trace = process.langfuseTraceUrl.flatMap(URL.init(string:)) {
-				Link(destination: trace) {
-					Label("Langfuse trace", systemImage: "arrow.up.right.square")
+			HomerStat("Commands", systemImage: "terminal") {
+				HStack(alignment: .firstTextBaseline, spacing: 6) {
+					Text("\(process.executions.count + (process.currentCommand == nil ? 0 : 1))")
+						.monospacedDigit()
+					let failed = process.executions.filter { $0.skipped != true && $0.resultCode != 0 }.count
+					if failed > 0 {
+						Text("\(failed) failed")
+							.scaledFont(.callout)
+							.foregroundStyle(.red)
+					}
+					else if process.currentCommand != nil {
+						Text("1 running")
+							.scaledFont(.callout)
+							.foregroundStyle(.blue)
+					}
 				}
-				.scaledFont(.callout)
+			}
+			HomerStat("Started", systemImage: "calendar") {
+				if let start = process.history.first?.timestamp {
+					let date = Date(timeIntervalSince1970: start)
+					Text(date, format: .relative(presentation: .named))
+						.help(HomerFormat.timestamp(start))
+				}
+				else {
+					Text(verbatim: "—")
+				}
 			}
 		}
 	}
 
+	/// The status changes as a connected timeline, how long each status lasted, and the
+	/// workspace's purge still ahead.
 	private func timeline(_ process: HomerProcess) -> some View {
-		HomerDetailSection("Status Timeline", subtitle: "History of status changes") {
-			VStack(alignment: .leading, spacing: 6) {
-				ForEach(Array(process.history.enumerated()), id: \.offset) { _, entry in
-					HStack(spacing: 10) {
+		HomerDetailSection("Status Timeline", subtitle: "History of status changes", systemImage: "clock.arrow.circlepath") {
+			VStack(alignment: .leading, spacing: 0) {
+				let history = process.history
+				ForEach(Array(history.enumerated()), id: \.offset) { index, entry in
+					let next = index + 1 < history.count ? history[index + 1].timestamp : nil
+					HomerTimelineStep(
+						color: entry.status.color,
+						isLast: index == history.count - 1 && process.purgeAt == nil
+					) {
+						HStack(alignment: .firstTextBaseline, spacing: 6) {
+							Text(entry.status.title)
+								.fontWeight(.semibold)
+							if let next {
+								Text(HomerFormat.duration(from: entry.timestamp, to: next))
+									.scaledFont(.caption)
+									.foregroundStyle(.secondary)
+									.monospacedDigit()
+							}
+						}
 						Text(HomerFormat.timestamp(entry.timestamp))
-							.scaledFont(.callout, design: .monospaced)
+							.scaledFont(.caption, design: .monospaced)
 							.foregroundStyle(.secondary)
-						HomerStatusBadge(status: entry.status)
 					}
 				}
 				if let purgeAt = process.purgeAt {
-					Divider()
-					HStack(spacing: 10) {
-						Text(HomerFormat.timestamp(purgeAt))
-							.scaledFont(.callout, design: .monospaced)
-							.foregroundStyle(.secondary)
+					HomerTimelineStep(color: .secondary, isLast: true, isPending: true) {
 						TimelineView(.periodic(from: .now, by: 30)) { context in
-							Text("workspace purge (\(HomerFormat.timeUntil(purgeAt, now: context.date)))")
-								.scaledFont(.caption)
+							Text("Workspace purge \(HomerFormat.timeUntil(purgeAt, now: context.date))")
 								.foregroundStyle(.secondary)
-								.padding(.horizontal, 7)
-								.padding(.vertical, 2)
-								.background(.fill.tertiary, in: Capsule())
 						}
+						Text(HomerFormat.timestamp(purgeAt))
+							.scaledFont(.caption, design: .monospaced)
+							.foregroundStyle(.secondary)
 					}
 				}
 			}
+			.scaledFont(.callout)
 		}
 	}
 
 	private func executions(_ process: HomerProcess) -> some View {
-		HomerDetailSection("Executions", subtitle: "Command execution history") {
+		HomerDetailSection("Executions", subtitle: "Command execution history", systemImage: "terminal") {
 			if process.executions.isEmpty, process.currentCommand == nil {
 				Text("No executions yet")
 					.scaledFont(.callout)
@@ -273,35 +395,45 @@ package struct HomerProcessDetailView<Questions: View>: View {
 
 // MARK: - Sections
 
-/// A titled card of the process page, as the console's `Card`s.
-package struct HomerDetailSection<Content: View>: View {
-	let title: String
-	let subtitle: String?
+/// One status of the timeline: a dot in its color on the line that joins it to the next. A
+/// pending step — the purge still ahead — is a hollow dot.
+private struct HomerTimelineStep<Content: View>: View {
+	let color: Color
+	let isLast: Bool
+	var isPending = false
 	@ViewBuilder
-	let content: () -> Content
+	let content: Content
 
-	package init(_ title: String, subtitle: String? = nil, @ViewBuilder content: @escaping () -> Content) {
-		self.title = title
-		self.subtitle = subtitle
-		self.content = content
-	}
-
-	package var body: some View {
-		VStack(alignment: .leading, spacing: 10) {
-			VStack(alignment: .leading, spacing: 2) {
-				Text(title)
-					.scaledFont(.headline)
-				if let subtitle {
-					Text(subtitle)
-						.scaledFont(.callout)
-						.foregroundStyle(.secondary)
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 10) {
+			Group {
+				if isPending {
+					Circle()
+						.strokeBorder(color, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+				}
+				else {
+					Circle()
+						.fill(color)
 				}
 			}
-			content()
+			.frame(width: 10, height: 10)
+			.alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+
+			VStack(alignment: .leading, spacing: 2) {
+				content
+			}
+			.padding(.bottom, isLast ? 0 : 14)
 		}
-		.padding(16)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.homerCard()
+		// The line runs from under this dot to the next one, the row's whole height.
+		.background(alignment: .topLeading) {
+			if !isLast {
+				Rectangle()
+					.fill(Color(nsColor: .separatorColor))
+					.frame(width: 2)
+					.padding(.top, 14)
+					.padding(.leading, 4)
+			}
+		}
 	}
 }
 
@@ -314,50 +446,46 @@ struct HomerRunnerPanel: View {
 	private var showsStartupFailure = false
 
 	var body: some View {
-		HomerDetailSection("Runner", subtitle: "Execution backend for this process") {
-			VStack(alignment: .leading, spacing: 8) {
-				HStack(spacing: 8) {
-					label("Alias:")
-					Text(runner.displayName)
-						.scaledFont(.callout, design: .monospaced)
-						.foregroundStyle(.secondary)
-						.textSelection(.enabled)
-					if let phase = runner.podPhase {
-						HomerPill(Self.title(podPhase: phase), color: HomerRunnerView.color(podPhase: phase))
-					}
-				}
-				if let podName = runner.podName {
-					HStack(spacing: 8) {
-						label("Pod:")
-						Text(podName)
-							.scaledFont(.callout, design: .monospaced)
-							.foregroundStyle(.secondary)
-							.textSelection(.enabled)
-						Button {
-							NSPasteboard.general.clearContents()
-							NSPasteboard.general.setString(podName, forType: .string)
-						} label: {
-							Image(systemName: "doc.on.doc")
-						}
-						.buttonStyle(.borderless)
-						.help("Copy pod name")
-					}
-				}
-				let times = [("Created:", runner.createdAt), ("Ready:", runner.readyAt), ("Ended:", runner.endedAt)]
-					.compactMap { name, time in time.map { (name, $0) } }
-				if !times.isEmpty {
-					Divider()
-					ForEach(times, id: \.0) { name, time in
+		HomerDetailSection("Runner", subtitle: "Execution backend for this process", systemImage: "server.rack") {
+			VStack(alignment: .leading, spacing: 10) {
+				Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+					HomerGridRow("Alias") {
 						HStack(spacing: 8) {
-							label(name)
+							Text(runner.displayName)
+								.scaledFont(.callout, design: .monospaced)
+								.textSelection(.enabled)
+							if let phase = runner.podPhase {
+								HomerPill(Self.title(podPhase: phase), color: HomerRunnerView.color(podPhase: phase))
+							}
+						}
+					}
+					if let podName = runner.podName {
+						HomerGridRow("Pod") {
+							HStack(spacing: 6) {
+								Text(podName)
+									.scaledFont(.callout, design: .monospaced)
+									.lineLimit(1)
+									.truncationMode(.middle)
+									.textSelection(.enabled)
+								Button {
+									NSPasteboard.general.clearContents()
+									NSPasteboard.general.setString(podName, forType: .string)
+								} label: {
+									Image(systemName: "doc.on.doc")
+								}
+								.buttonStyle(.borderless)
+								.help("Copy pod name")
+							}
+						}
+					}
+					ForEach(times, id: \.0) { name, time in
+						HomerGridRow(name) {
 							Text(HomerFormat.timestamp(time))
 								.scaledFont(.callout, design: .monospaced)
-								.foregroundStyle(.secondary)
 						}
 					}
 				}
 				if let failure = runner.startupFailure {
-					Divider()
 					DisclosureGroup(isExpanded: $showsStartupFailure) {
 						VStack(alignment: .leading, spacing: 6) {
 							Text(failure.message)
@@ -376,16 +504,17 @@ struct HomerRunnerPanel: View {
 							.fontWeight(.medium)
 							.foregroundStyle(.red)
 					}
+					.padding(10)
+					.homerInset(tint: .red)
 				}
 			}
 			.scaledFont(.callout)
 		}
 	}
 
-	private func label(_ text: String) -> some View {
-		Text(text)
-			.scaledFont(.callout)
-			.fontWeight(.medium)
+	private var times: [(String, Double)] {
+		[("Created", runner.createdAt), ("Ready", runner.readyAt), ("Ended", runner.endedAt)]
+			.compactMap { name, time in time.map { (name, $0) } }
 	}
 
 	static func title(podPhase: String) -> String {
@@ -411,31 +540,36 @@ struct HomerExecutionRow: View {
 			Button {
 				store.send(.executionToggled(index: index))
 			} label: {
-				HStack(spacing: 8) {
-					Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+				HStack(spacing: 10) {
+					Image(systemName: "chevron.right")
 						.scaledFont(.caption)
+						.fontWeight(.semibold)
 						.foregroundStyle(.secondary)
+						.rotationEffect(.degrees(isExpanded ? 90 : 0))
 						.frame(width: 12)
+					Text("\(index + 1)")
+						.scaledFont(.caption, design: .monospaced)
+						.foregroundStyle(.secondary)
+						.frame(minWidth: 16, alignment: .trailing)
 					outcomeIcon
 					Text(execution.label)
 						.scaledFont(.body)
 						.fontWeight(.medium)
-					Text(execution.skipped == true ? "Skipped" : "Exit code: \(execution.resultCode)")
-						.scaledFont(.callout)
-						.foregroundStyle(.secondary)
-						.help(execution.skipped == true ? execution.errMsg ?? "" : "")
+					outcomeLabel
 					Spacer()
 					if let start = execution.start, let end = execution.end {
-						Text(HomerFormat.duration(from: start, to: end))
+						Label(HomerFormat.duration(from: start, to: end), systemImage: "timer")
 							.scaledFont(.callout)
 							.foregroundStyle(.secondary)
 							.monospacedDigit()
 					}
 				}
-				.padding(12)
+				.padding(.horizontal, 12)
+				.padding(.vertical, 10)
 				.contentShape(Rectangle())
 			}
-			.buttonStyle(.plain)
+			.buttonStyle(.homerRow)
+			.animation(.snappy(duration: 0.2), value: isExpanded)
 
 			if isExpanded {
 				Divider()
@@ -446,37 +580,58 @@ struct HomerExecutionRow: View {
 		.homerInset()
 	}
 
-	@ViewBuilder
+	/// The outcome as a symbol on a tint of its color.
 	private var outcomeIcon: some View {
-		if execution.skipped == true {
-			Image(systemName: "minus.circle")
-				.foregroundStyle(.secondary)
+		let (symbol, color): (String, Color) = if execution.skipped == true {
+			("minus", .secondary)
 		}
 		else if execution.resultCode == 0 {
-			Image(systemName: "checkmark")
-				.foregroundStyle(.green)
+			("checkmark", .green)
 		}
 		else {
-			Image(systemName: "xmark")
-				.foregroundStyle(.red)
+			("xmark", .red)
+		}
+		return Image(systemName: symbol)
+			.font(.system(size: 9, weight: .bold))
+			.foregroundStyle(color)
+			.frame(width: 18, height: 18)
+			.background(color.opacity(0.15), in: Circle())
+	}
+
+	/// Only what the icon does not say: a skip, or a failure's exit code.
+	@ViewBuilder
+	private var outcomeLabel: some View {
+		if execution.skipped == true {
+			HomerPill("Skipped", color: .gray)
+				.help(execution.errMsg ?? "")
+		}
+		else if execution.resultCode != 0 {
+			HomerPill("Exit code \(execution.resultCode)", color: .red)
+		}
+		else {
+			Text("Exit code: 0")
+				.scaledFont(.callout)
+				.foregroundStyle(.secondary)
 		}
 	}
 
 	private var details: some View {
-		VStack(alignment: .leading, spacing: 8) {
-			if let start = execution.start {
-				field("Start:") { timestamp(start) }
-			}
-			if let end = execution.end {
-				field("End:") { timestamp(end) }
-			}
-			field("Stdout:") { outputLinks(execution.stdOut, stream: .stdout) }
-			field("Stderr:") { outputLinks(execution.stdErr, stream: .stderr) }
-			if let error = execution.errMsg {
-				field("Error:") {
-					Text(error)
-						.foregroundStyle(.red)
-						.textSelection(.enabled)
+		VStack(alignment: .leading, spacing: 10) {
+			Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+				if let start = execution.start {
+					HomerGridRow("Start") { timestamp(start) }
+				}
+				if let end = execution.end {
+					HomerGridRow("End") { timestamp(end) }
+				}
+				HomerGridRow("Stdout") { outputLinks(execution.stdOut, stream: .stdout) }
+				HomerGridRow("Stderr") { outputLinks(execution.stdErr, stream: .stderr) }
+				if let error = execution.errMsg {
+					HomerGridRow("Error") {
+						Text(error)
+							.foregroundStyle(.red)
+							.textSelection(.enabled)
+					}
 				}
 			}
 			if execution.label == store.langGraphLabel {
@@ -489,14 +644,6 @@ struct HomerExecutionRow: View {
 			}
 		}
 		.scaledFont(.callout)
-	}
-
-	private func field(_ name: String, @ViewBuilder value: () -> some View) -> some View {
-		HStack(alignment: .firstTextBaseline, spacing: 6) {
-			Text(name)
-				.fontWeight(.medium)
-			value()
-		}
 	}
 
 	private func timestamp(_ time: Double) -> some View {

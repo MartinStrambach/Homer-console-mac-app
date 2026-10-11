@@ -39,6 +39,9 @@ struct HomerQuestionListView: View {
 						}
 					}
 					.padding()
+					// A readable measure on a wide window, as the Costs page.
+					.frame(maxWidth: 900)
+					.frame(maxWidth: .infinity)
 				}
 			}
 		}
@@ -222,7 +225,7 @@ struct HomerQuestionCard: View {
 				.textFieldStyle(.roundedBorder)
 				.onSubmit(submitDraft)
 			Button("Send", action: submitDraft)
-				.buttonStyle(.scaledBordered)
+				.buttonStyle(.scaledBorderedProminent)
 				.disabled(draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 			if isAnswering {
 				ProgressView()
