@@ -56,6 +56,9 @@ public struct HomerInstanceReducer: Sendable {
 		/// children are never roots.
 		public internal(set) var parentFilter: Int?
 		public internal(set) var oldestFirst = false
+		/// Leaves cron-started runs out of the list. The server has no owner filter, so it hides
+		/// loaded rows rather than changing the query: `processTotal` and paging still count them.
+		public var hidesScheduledRuns = false
 		/// The agent filter's choices.
 		public internal(set) var agentNames: [String] = []
 		public internal(set) var hasLoadedProcesses = false
@@ -176,10 +179,20 @@ public struct HomerInstanceReducer: Sendable {
 			!statusFilter.isEmpty || agentFilter != nil || !tagFilter.isEmpty || parentFilter != nil
 		}
 
+		/// The table's rows: the loaded runs, less the scheduled ones while they are hidden.
+		public var visibleProcesses: IdentifiedArrayOf<HomerProcess> {
+			hidesScheduledRuns ? processes.filter { !$0.isScheduled } : processes
+		}
+
+		/// Loaded runs left out of the table by `hidesScheduledRuns`.
+		public var hiddenScheduledRunCount: Int {
+			processes.count - visibleProcesses.count
+		}
+
 		/// What the listed runs cost together — the rows shown, not every match, as in the
 		/// console's "Total cost".
 		public var listedCostUsd: Double {
-			processes.reduce(0) { $0 + ($1.costUsd ?? 0) }
+			visibleProcesses.reduce(0) { $0 + ($1.costUsd ?? 0) }
 		}
 
 		var processQuery: HomerProcessQuery {
@@ -307,6 +320,10 @@ public struct HomerInstanceReducer: Sendable {
 					state.parentFilter = nil
 				}
 				return refilter(&state)
+
+			case .binding(\.hidesScheduledRuns):
+				// The same rows, fewer of them shown: only the Flow cells follow.
+				return syncFlowSummaries(&state)
 
 			case .binding:
 				return .none
@@ -831,7 +848,7 @@ public struct HomerInstanceReducer: Sendable {
 	/// restarts their poll, leaving the root view stops it.
 	private func syncFlowSummaries(_ state: inout State) -> Effect<Action> {
 		let rootIDs = state.showsFlowColumn
-			? Array(state.processes.ids.prefix(Self.flowSummaryRowLimit))
+			? Array(state.visibleProcesses.ids.prefix(Self.flowSummaryRowLimit))
 			: []
 		guard rootIDs != state.flowSummaryRootIDs else {
 			return .none

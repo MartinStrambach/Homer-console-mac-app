@@ -577,6 +577,43 @@ struct HomerInstanceReducerTests {
 		await store.skipInFlightEffects()
 	}
 
+	@Test("hiding scheduled runs leaves the cron's rows out of the table, the cost and the Flow cells")
+	func hideScheduledRuns() async {
+		let clock = TestClock()
+		let manual = HomerProcess(id: 2, status: .working, agentName: "factory", owner: "session:admin", costUsd: 1)
+		let scheduled = HomerProcess(id: 1, status: .finished, agentName: "nightly", owner: "system:cron", costUsd: 2)
+		let queries = LockIsolated<[HomerProcessQuery]>([])
+		var initialState = signedInState()
+		initialState.isActive = true
+		initialState.rootsOnly = true
+		initialState.processes = [manual, scheduled]
+		initialState.processTotal = 2
+		initialState.flowSummaryRootIDs = [2, 1]
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerClient.self].processes = { _, query in
+				queries.withValue { $0.append(query) }
+				return HomerProcessPage(processes: [], total: 0)
+			}
+		}
+
+		await store.send(.binding(.set(\.hidesScheduledRuns, true))) {
+			$0.hidesScheduledRuns = true
+			$0.flowSummaryRootIDs = [2]
+		}
+		#expect(store.state.visibleProcesses.map(\.id) == [2])
+		#expect(store.state.hiddenScheduledRunCount == 1)
+		#expect(store.state.listedCostUsd == 1)
+		await store.receive(\.flowSummariesLoaded) {
+			$0.flowSummaries = [2: HomerFlowSummary(page: HomerProcessPage(processes: [], total: 0))]
+		}
+		// The rows are already loaded: only the shown root's Flow cell is read, never the list.
+		#expect(queries.value == [HomerProcessQuery(rootProcessId: 2, limit: HomerFlowSummary.fetchLimit)])
+		await store.skipInFlightEffects()
+	}
+
 	@Test("killing asks first, then refreshes the list")
 	func killConfirms() async {
 		let clock = TestClock()
