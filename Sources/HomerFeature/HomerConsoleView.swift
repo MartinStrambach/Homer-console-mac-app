@@ -106,6 +106,18 @@ public struct HomerConsoleView<Leading: View>: View {
 					}
 				}
 			}
+			// The instance menu's badge is drawn over the container, not as the menu's overlay:
+			// inside it, the container's glass draws over the badge.
+			.overlayPreferenceValue(InstanceMenuBoundsKey.self) { anchor in
+				GeometryReader { proxy in
+					if let anchor {
+						let bounds = proxy[anchor]
+						OtherInstancesQuestionBadge(count: store.otherInstancesOpenQuestionCount)
+							.position(x: bounds.maxX - 3, y: bounds.minY + 3)
+							.allowsHitTesting(false)
+					}
+				}
+			}
 		}
 		// The height its 30 pt buttons give it, signed out too (there are none then), so the
 		// leading view does not move — in Bridge Commander that also matches the repository
@@ -160,50 +172,53 @@ public struct HomerConsoleView<Leading: View>: View {
 	// MARK: - Instances
 
 	private var instanceMenu: some View {
-		HStack(spacing: 6) {
-			Menu {
-				ForEach(Array(store.instances.enumerated()), id: \.element.id) { index, instance in
-					Toggle(isOn: Binding(
-						get: { store.addInstance == nil && instance.id == store.selectedInstanceID },
-						set: { _ in store.send(.instanceSelected(instance.id)) }
-					)) {
-						Text(Self.menuTitle(of: instance))
-					}
-					.keyboardShortcut(Self.shortcutKey(index: index).map { KeyboardShortcut($0, modifiers: .command) })
+		Menu {
+			ForEach(Array(store.instances.enumerated()), id: \.element.id) { index, instance in
+				Toggle(isOn: Binding(
+					get: { store.addInstance == nil && instance.id == store.selectedInstanceID },
+					set: { _ in store.send(.instanceSelected(instance.id)) }
+				)) {
+					Text(Self.menuTitle(of: instance))
 				}
-				Divider()
-				Button {
-					store.send(.addInstanceTapped)
-				} label: {
-					Label("Add Instance…", systemImage: "plus")
-				}
-				if store.addInstance == nil, let instance = store.selectedInstance {
-					Button(role: .destructive) {
-						store.send(.removeInstanceTapped(instance.id))
-					} label: {
-						Label(
-							"Remove \(HomerEndpoint.displayName(of: instance.baseURL))",
-							systemImage: "minus.circle"
-						)
-					}
-				}
+				.keyboardShortcut(Self.shortcutKey(index: index).map { KeyboardShortcut($0, modifiers: .command) })
+			}
+			Divider()
+			Button {
+				store.send(.addInstanceTapped)
 			} label: {
-				Label(menuLabel, systemImage: "server.rack")
+				Label("Add Instance…", systemImage: "plus")
 			}
-			.labelStyle(.titleAndIcon)
-			.menuStyle(.borderlessButton)
-			.fixedSize()
-			.padding(.horizontal, 12)
-			.frame(height: 30)
-			.glassEffect(.regular.interactive(), in: .capsule)
-			.help("Switch Homer instance (⌘1–⌘9), or add one")
-
-			let elsewhere = store.otherInstancesOpenQuestionCount
-			if elsewhere > 0 {
-				HomerQuestionCountBadge(count: elsewhere)
-					.help("\(elsewhere) open \(elsewhere == 1 ? "question" : "questions") on your other instances")
+			if store.addInstance == nil, let instance = store.selectedInstance {
+				Button(role: .destructive) {
+					store.send(.removeInstanceTapped(instance.id))
+				} label: {
+					Label(
+						"Remove \(HomerEndpoint.displayName(of: instance.baseURL))",
+						systemImage: "minus.circle"
+					)
+				}
 			}
+		} label: {
+			Label(menuLabel, systemImage: "server.rack")
 		}
+		.labelStyle(.titleAndIcon)
+		.menuStyle(.borderlessButton)
+		.fixedSize()
+		.padding(.horizontal, 12)
+		.frame(height: 30)
+		.glassEffect(.regular.interactive(), in: .capsule)
+		.help(instanceMenuHelp)
+		.anchorPreference(key: InstanceMenuBoundsKey.self, value: .bounds) { $0 }
+	}
+
+	/// The badge passes clicks to the menu under it, so the menu's help speaks for it too.
+	private var instanceMenuHelp: String {
+		let elsewhere = store.otherInstancesOpenQuestionCount
+		let help = "Switch Homer instance (⌘1–⌘9), or add one"
+		guard elsewhere > 0 else {
+			return help
+		}
+		return "\(help) — \(elsewhere) open \(elsewhere == 1 ? "question" : "questions") on your other instances"
 	}
 
 	private var menuLabel: String {
@@ -350,5 +365,34 @@ struct HomerInstanceView: View {
 			}
 		}
 		return tab.title
+	}
+}
+
+/// Where the instance menu is, for its badge.
+private struct InstanceMenuBoundsKey: PreferenceKey {
+	static let defaultValue: Anchor<CGRect>? = nil
+
+	static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+		value = value ?? nextValue()
+	}
+}
+
+/// The other instances' open questions, as a count on the instance menu's corner — a Dock-style
+/// badge: white on orange, round for one digit and a capsule past that.
+private struct OtherInstancesQuestionBadge: View {
+	let count: Int
+
+	var body: some View {
+		if count > 0 {
+			Text(count > 99 ? "99+" : "\(count)")
+				.scaledFont(.caption2)
+				.fontWeight(.bold)
+				.monospacedDigit()
+				.foregroundStyle(.white)
+				.padding(.horizontal, 4)
+				.frame(minWidth: 16, minHeight: 16)
+				.background(.orange, in: Capsule())
+				.shadow(color: .black.opacity(0.2), radius: 1, y: 0.5)
+		}
 	}
 }
