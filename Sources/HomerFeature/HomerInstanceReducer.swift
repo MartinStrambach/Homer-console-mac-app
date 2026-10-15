@@ -72,7 +72,10 @@ public struct HomerInstanceReducer: Sendable {
 		public var alert: AlertState<Action.Alert>?
 
 		// Questions
+		/// The oldest open questions: one page, 100 since Homer 1.34 pages the list.
 		public internal(set) var questions: IdentifiedArrayOf<HomerQuestion> = []
+		/// Every open question the user can see, past the page too — what the badges count.
+		public internal(set) var questionsTotal = 0
 		public internal(set) var hasLoadedQuestions = false
 		public internal(set) var questionsError: String?
 		public internal(set) var answerDrafts: [HomerQuestion.ID: String] = [:]
@@ -139,7 +142,15 @@ public struct HomerInstanceReducer: Sendable {
 		}
 
 		public var openQuestionCount: Int {
-			user == nil ? 0 : questions.count
+			user == nil ? 0 : questionsTotal
+		}
+
+		/// Drops a question answered or cancelled here, from the page and the total, until the
+		/// next poll says what is left.
+		mutating func removeOpenQuestion(id: HomerQuestion.ID) {
+			if questions.remove(id: id) != nil {
+				questionsTotal = max(questionsTotal - 1, questions.count)
+			}
 		}
 
 		/// Whether the console's page shows a run's page instead of its own content.
@@ -244,7 +255,7 @@ public struct HomerInstanceReducer: Sendable {
 		case processActionFinished(processId: Int, ProcessAction, Result<Int?, any Error>)
 		case alert(PresentationAction<Alert>)
 
-		case questionsLoaded(Result<[HomerQuestion], any Error>)
+		case questionsLoaded(Result<HomerQuestionPage, any Error>)
 		case answerDraftChanged(questionId: HomerQuestion.ID, text: String)
 		case answerTapped(questionId: HomerQuestion.ID, answer: String)
 		case answerFinished(questionId: HomerQuestion.ID, Result<Void, any Error>)
@@ -254,7 +265,7 @@ public struct HomerInstanceReducer: Sendable {
 		case cancelQuestionConfirmed
 		case cancelQuestionDismissed
 		case cancelQuestionFinished(questionId: HomerQuestion.ID, Result<Void, any Error>)
-		case runQuestionsLoaded(processId: Int, Result<[HomerQuestion], any Error>)
+		case runQuestionsLoaded(processId: Int, Result<HomerQuestionPage, any Error>)
 
 		case healthLoaded(HomerHealth)
 		case versionLoaded(String)
@@ -597,11 +608,12 @@ public struct HomerInstanceReducer: Sendable {
 			case .processDetail:
 				return .none
 
-			case let .questionsLoaded(.success(questions)):
+			case let .questionsLoaded(.success(page)):
 				guard state.user != nil else {
 					return .none
 				}
-				state.questions = IdentifiedArray(questions, uniquingIDsWith: { first, _ in first })
+				state.questions = IdentifiedArray(page.questions, uniquingIDsWith: { first, _ in first })
+				state.questionsTotal = max(page.total, state.questions.count)
 				state.hasLoadedQuestions = true
 				state.questionsError = nil
 				// Drafts and errors of questions that closed elsewhere have nothing left to
@@ -641,7 +653,7 @@ public struct HomerInstanceReducer: Sendable {
 
 			case let .answerFinished(questionId, .success):
 				state.answeringQuestionIDs.remove(questionId)
-				state.questions.remove(id: questionId)
+				state.removeOpenQuestion(id: questionId)
 				state.answerDrafts[questionId] = nil
 				// The answer resumes the process; its row (and open-question count) moves on.
 				return .merge(
@@ -689,7 +701,7 @@ public struct HomerInstanceReducer: Sendable {
 				state.answeringQuestionIDs.remove(questionId)
 				switch result {
 				case .success:
-					state.questions.remove(id: questionId)
+					state.removeOpenQuestion(id: questionId)
 					state.answerDrafts[questionId] = nil
 				case let .failure(error):
 					if error as? HomerAPIError == .unauthorized {
@@ -705,15 +717,12 @@ public struct HomerInstanceReducer: Sendable {
 					state.isActive ? pollProcesses(state) : .none
 				)
 
-			case let .runQuestionsLoaded(processId, .success(questions)):
+			case let .runQuestionsLoaded(processId, .success(page)):
 				// An answer for a run no longer on screen, or a user since signed out.
 				guard state.user != nil, state.processDetail?.processId == processId else {
 					return .none
 				}
-				state.runQuestions = HomerRunQuestions(
-					processId: processId,
-					questions: IdentifiedArray(questions, uniquingIDsWith: { first, _ in first })
-				)
+				state.runQuestions = HomerRunQuestions(processId: processId, page: page)
 				return .none
 
 			case let .runQuestionsLoaded(_, .failure(error)):
@@ -1073,6 +1082,7 @@ public struct HomerInstanceReducer: Sendable {
 		state.parentFilter = nil
 		state.alert = nil
 		state.questions = []
+		state.questionsTotal = 0
 		state.hasLoadedQuestions = false
 		state.questionsError = nil
 		state.answerDrafts = [:]
@@ -1088,8 +1098,16 @@ public struct HomerInstanceReducer: Sendable {
 	}
 }
 
-/// Every question one run asked, as its page shows them.
+/// Every question one run asked, as its page shows them — the oldest page of them since Homer
+/// 1.34, with the total.
 public struct HomerRunQuestions: Equatable, Sendable {
 	public let processId: Int
 	public var questions: IdentifiedArrayOf<HomerQuestion>
+	public var total: Int
+
+	init(processId: Int, page: HomerQuestionPage) {
+		self.processId = processId
+		self.questions = IdentifiedArray(page.questions, uniquingIDsWith: { first, _ in first })
+		self.total = max(page.total, questions.count)
+	}
 }

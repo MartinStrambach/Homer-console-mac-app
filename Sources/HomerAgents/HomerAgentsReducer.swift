@@ -424,7 +424,7 @@ public struct HomerAgentsReducer: Sendable {
 					}
 				} message: {
 					TextState(
-						"This starts the agent immediately with its cron semantics — no parameters are asked for, and the run is owned by the scheduler. A fire that starts no run (cost cap, cooldown, lock, parallel-run or queued-runs cap) is only logged, never reported as an error."
+						"This starts the agent immediately with its cron semantics — no parameters are asked for, and the run is owned by the scheduler. A fire refused by the cost cap or the cooldown starts no run and is only logged, never reported as an error; a lock, parallel-run or queued-runs refusal starts a run that ends FAILED."
 					)
 				}
 				return .none

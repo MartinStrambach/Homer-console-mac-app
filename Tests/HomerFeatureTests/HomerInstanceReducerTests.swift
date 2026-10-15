@@ -43,7 +43,7 @@ struct HomerInstanceReducerTests {
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].me = { _ in admin }
-			$0[HomerClient.self].openQuestions = { _ in [question] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: [question]) }
 		}
 
 		await store.send(.start)
@@ -53,6 +53,7 @@ struct HomerInstanceReducerTests {
 		}
 		await store.receive(\.questionsLoaded) {
 			$0.questions = [question]
+			$0.questionsTotal = 1
 			$0.hasLoadedQuestions = true
 		}
 		await store.skipInFlightEffects()
@@ -115,7 +116,7 @@ struct HomerInstanceReducerTests {
 				loginArguments.setValue([baseURL, username, password])
 				return admin
 			}
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 		}
 
 		await store.send(.signIn(.signInTapped)) {
@@ -141,6 +142,7 @@ struct HomerInstanceReducerTests {
 		var initialState = signedInState()
 		initialState.isActive = true
 		initialState.questions = [question]
+		initialState.questionsTotal = 1
 		initialState.hasLoadedQuestions = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
@@ -157,16 +159,21 @@ struct HomerInstanceReducerTests {
 			$0.session = .signedOut
 			$0.signIn.sessionExpired = true
 			$0.questions = []
+			$0.questionsTotal = 0
 			$0.hasLoadedQuestions = false
 		}
 	}
 
-	@Test("an answered question leaves the list and the list is re-read")
+	@Test("an answered question leaves the list and the badge, which counts past the page, and the list is re-read")
 	func answerQuestion() async {
 		let clock = TestClock()
 		let answers = LockIsolated<[String]>([])
+		var later = question
+		later.id = "q-2"
 		var initialState = signedInState()
+		// The page holds one question of the three open (Homer 1.34 pages the list).
 		initialState.questions = [question]
+		initialState.questionsTotal = 3
 		initialState.hasLoadedQuestions = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
@@ -175,8 +182,9 @@ struct HomerInstanceReducerTests {
 			$0[HomerClient.self].answerQuestion = { _, id, answer in
 				answers.withValue { $0.append("\(id)=\(answer)") }
 			}
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { [later] _ in HomerQuestionPage(questions: [later], total: 2) }
 		}
+		#expect(store.state.openQuestionCount == 3)
 
 		await store.send(.answerTapped(questionId: "q-1", answer: " Yes ")) {
 			$0.answeringQuestionIDs = ["q-1"]
@@ -184,8 +192,11 @@ struct HomerInstanceReducerTests {
 		await store.receive(\.answerFinished) {
 			$0.answeringQuestionIDs = []
 			$0.questions = []
+			$0.questionsTotal = 2
 		}
-		await store.receive(\.questionsLoaded)
+		await store.receive(\.questionsLoaded) {
+			$0.questions = [later]
+		}
 
 		#expect(answers.value == ["q-1=Yes"])
 		await store.skipInFlightEffects()
@@ -196,13 +207,14 @@ struct HomerInstanceReducerTests {
 		let clock = TestClock()
 		var initialState = signedInState()
 		initialState.questions = [question]
+		initialState.questionsTotal = 1
 		initialState.hasLoadedQuestions = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].answerQuestion = { _, _, _ in throw HomerAPIError.conflict }
-			$0[HomerClient.self].openQuestions = { _ in [question] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: [question]) }
 		}
 
 		await store.send(.answerTapped(questionId: "q-1", answer: "No")) {
@@ -224,6 +236,7 @@ struct HomerInstanceReducerTests {
 		dispatching.dispatch = .init(id: 3, agentName: "factory-developer", status: "PENDING")
 		var initialState = signedInState()
 		initialState.questions = [dispatching]
+		initialState.questionsTotal = 1
 		initialState.hasLoadedQuestions = true
 		initialState.answerDrafts = ["q-1": "Maybe"]
 		let store = TestStore(initialState: initialState) {
@@ -231,7 +244,7 @@ struct HomerInstanceReducerTests {
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].cancelDispatch = { _, id in cancelled.withValue { $0.append(id) } }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 		}
 
 		await store.send(.cancelQuestionTapped(questionId: "q-1")) {
@@ -252,6 +265,7 @@ struct HomerInstanceReducerTests {
 		await store.receive(\.cancelQuestionFinished) {
 			$0.answeringQuestionIDs = []
 			$0.questions = []
+			$0.questionsTotal = 0
 			$0.answerDrafts = [:]
 		}
 		await store.receive(\.questionsLoaded)
@@ -267,6 +281,7 @@ struct HomerInstanceReducerTests {
 		dispatching.dispatch = .init(id: 3, agentName: "factory-developer", status: "PENDING")
 		var initialState = signedInState()
 		initialState.questions = [dispatching]
+		initialState.questionsTotal = 1
 		initialState.hasLoadedQuestions = true
 		initialState.questionToCancel = "q-1"
 		let store = TestStore(initialState: initialState) {
@@ -274,7 +289,7 @@ struct HomerInstanceReducerTests {
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].cancelDispatch = { _, _ in throw HomerAPIError.conflict }
-			$0[HomerClient.self].openQuestions = { [dispatching] _ in [dispatching] }
+			$0[HomerClient.self].openQuestions = { [dispatching] _ in HomerQuestionPage(questions: [dispatching]) }
 		}
 
 		await store.send(.cancelQuestionConfirmed) {
@@ -346,7 +361,7 @@ struct HomerInstanceReducerTests {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerClient.self].version = { _ in
 				reads.withValue { $0 += 1 }
@@ -389,11 +404,11 @@ struct HomerInstanceReducerTests {
 			$0.continuousClock = clock
 			// The run's own poll is the process page's to test.
 			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerClient.self].runQuestions = { _, processId in
 				asked.withValue { $0.append(processId) }
-				return processId == 42 ? [answered] : []
+				return HomerQuestionPage(questions: processId == 42 ? [answered] : [])
 			}
 		}
 
@@ -408,7 +423,7 @@ struct HomerInstanceReducerTests {
 			$0.processDetail?.isShown = true
 		}
 		await store.receive(\.runQuestionsLoaded) {
-			$0.runQuestions = HomerRunQuestions(processId: 42, questions: [answered])
+			$0.runQuestions = HomerRunQuestions(processId: 42, page: HomerQuestionPage(questions: [answered]))
 		}
 		await clock.advance(by: HomerInstanceReducer.questionPollInterval)
 		await store.receive(\.runQuestionsLoaded)
@@ -454,7 +469,7 @@ struct HomerInstanceReducerTests {
 			HomerInstanceReducer()
 		}
 
-		await store.send(.runQuestionsLoaded(processId: 42, .success([question])))
+		await store.send(.runQuestionsLoaded(processId: 42, .success(HomerQuestionPage(questions: [question]))))
 	}
 
 	@Test("a 401 on the process page signs the instance out and closes the page")
@@ -482,11 +497,11 @@ struct HomerInstanceReducerTests {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = clock
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			// Answers after the open questions, so the two arrive in a known order.
 			$0[HomerClient.self].runQuestions = { _, _ in
 				try await clock.sleep(for: .seconds(1))
-				return []
+				return HomerQuestionPage(questions: [])
 			}
 		}
 
@@ -496,7 +511,7 @@ struct HomerInstanceReducerTests {
 		}
 		await clock.advance(by: .seconds(1))
 		await store.receive(\.runQuestionsLoaded) {
-			$0.runQuestions = HomerRunQuestions(processId: 42, questions: [])
+			$0.runQuestions = HomerRunQuestions(processId: 42, page: HomerQuestionPage(questions: []))
 		}
 		await store.skipInFlightEffects()
 	}
@@ -560,7 +575,7 @@ struct HomerInstanceReducerTests {
 					? HomerProcessPage(processes: [child], total: 1)
 					: HomerProcessPage(processes: [root], total: 1)
 			}
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 		}
@@ -656,7 +671,7 @@ struct HomerInstanceReducerTests {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].retryProcess = { _, _ in 43 }
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
-			$0[HomerClient.self].runQuestions = { _, _ in [] }
+			$0[HomerClient.self].runQuestions = { _, _ in HomerQuestionPage(questions: []) }
 			$0[HomerProcessDetailClient.self].process = { _, _ in try await Task.never() }
 		}
 
@@ -676,7 +691,7 @@ struct HomerInstanceReducerTests {
 		// The list is refreshed too, on an instance on screen.
 		store.exhaustivity = .off(showSkippedAssertions: false)
 		await store.receive(\.runQuestionsLoaded) {
-			$0.runQuestions = HomerRunQuestions(processId: 43, questions: [])
+			$0.runQuestions = HomerRunQuestions(processId: 43, page: HomerQuestionPage(questions: []))
 		}
 		await store.skipInFlightEffects()
 	}
@@ -707,7 +722,7 @@ struct HomerInstanceReducerTests {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerClient.self].version = { _ in "1.32.0" }
 			$0[HomerContinuationsClient.self].pendingCount = { baseURL in

@@ -94,7 +94,7 @@ struct HomerChildPageTests {
 		} withDependencies: {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in
 				fetches.withValue { $0 += 1 }
@@ -155,8 +155,8 @@ struct HomerChildPageTests {
 			$0.continuousClock = TestClock()
 			$0[HomerProcessDetailClient.self].process = { _, _ in process }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
-			$0[HomerClient.self].openQuestions = { _ in [] }
-			$0[HomerClient.self].runQuestions = { _, _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
+			$0[HomerClient.self].runQuestions = { _, _ in HomerQuestionPage(questions: []) }
 		}
 
 		await store.send(.continuations(.delegate(.openProcess(processId: 12))))
@@ -172,7 +172,7 @@ struct HomerChildPageTests {
 			$0.continuations.isShown = false
 		}
 		await store.receive(\.runQuestionsLoaded) {
-			$0.runQuestions = HomerRunQuestions(processId: 12, questions: [])
+			$0.runQuestions = HomerRunQuestions(processId: 12, page: HomerQuestionPage(questions: []))
 		}
 		await store.receive(\.processDetail.processLoaded) {
 			$0.processDetail?.process = process

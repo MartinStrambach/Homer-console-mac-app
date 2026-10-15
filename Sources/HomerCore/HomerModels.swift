@@ -504,8 +504,29 @@ public nonisolated struct HomerQuestion: Equatable, Sendable, Identifiable, Deco
 	}
 }
 
-nonisolated struct HomerQuestionList: Decodable {
-	var questions: [HomerQuestion]
+/// A page of `GET /api/v1/questions`, oldest first. Since Homer 1.34 the list is paged (100 by
+/// default) and `total` counts every visible question matching the filters; an older server sends
+/// every question and no `total`.
+public nonisolated struct HomerQuestionPage: Equatable, Sendable, Decodable {
+	public var questions: [HomerQuestion]
+	public var total: Int
+
+	public init(questions: [HomerQuestion], total: Int? = nil) {
+		self.questions = questions
+		self.total = total ?? questions.count
+	}
+
+	public init(from decoder: any Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		try self.init(
+			questions: container.decode([HomerQuestion].self, forKey: .questions),
+			total: container.decodeIfPresent(Int.self, forKey: .total)
+		)
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case questions, total
+	}
 }
 
 /// The signed-in principal (`GET /api/v1/auth/me`).

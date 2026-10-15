@@ -101,8 +101,11 @@ struct HomerModelsTests {
 			] }
 			"""
 
-		let questions = try JSONDecoder().decode(HomerQuestionList.self, from: Data(json.utf8)).questions
+		let page = try JSONDecoder().decode(HomerQuestionPage.self, from: Data(json.utf8))
+		let questions = page.questions
 
+		// A server before Homer 1.34 sends every question and no total.
+		#expect(page.total == 1)
 		#expect(questions == [
 			HomerQuestion(
 				id: "q-1",
@@ -130,12 +133,27 @@ struct HomerModelsTests {
 			] }
 			"""
 
-		let questions = try JSONDecoder().decode(HomerQuestionList.self, from: Data(json.utf8)).questions
+		let questions = try JSONDecoder().decode(HomerQuestionPage.self, from: Data(json.utf8)).questions
 
 		#expect(questions.map(\.status) == [.answered, .answered])
 		#expect(questions.map(\.answeredAt) == [1_700_000_060, 1_700_000_090])
 		#expect(questions.map(\.dispatch?.startedProcessId) == [99, nil])
 		#expect(questions.map(\.dispatch?.hasFailed) == [false, true])
 		#expect(questions[1].dispatch?.error == "Cost cap reached")
+	}
+
+	@Test("since Homer 1.34 the questions are a page whose total counts past it")
+	func decodesQuestionPage() throws {
+		let json = """
+			{ "questions": [
+			  { "id": "q-1", "processId": 7, "agentName": "factory", "text": "Ship?", "options": [],
+			    "status": "OPEN", "createdAt": 1700000000 }
+			], "total": 140, "offset": 0, "limit": 100 }
+			"""
+
+		let page = try JSONDecoder().decode(HomerQuestionPage.self, from: Data(json.utf8))
+
+		#expect(page.questions.map(\.id) == ["q-1"])
+		#expect(page.total == 140)
 	}
 }

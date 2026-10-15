@@ -127,14 +127,14 @@ package nonisolated enum HomerAPI {
 		).processId
 	}
 
-	static func openQuestions(baseURL: String) async throws -> [HomerQuestion] {
+	static func openQuestions(baseURL: String) async throws -> HomerQuestionPage {
 		let data = try await send(
 			"GET",
 			"/api/v1/questions",
 			baseURL: baseURL,
 			queryItems: [URLQueryItem(name: "status", value: "OPEN")]
 		)
-		return try decode(HomerQuestionList.self, from: data).questions
+		return try decode(HomerQuestionPage.self, from: data)
 	}
 
 	static func answerQuestion(baseURL: String, id: String, answer: String) async throws {
@@ -145,14 +145,14 @@ package nonisolated enum HomerAPI {
 
 	/// Every question a run asked, open or not — its page shows the answers and what they
 	/// started.
-	static func questions(baseURL: String, processId: Int) async throws -> [HomerQuestion] {
+	static func questions(baseURL: String, processId: Int) async throws -> HomerQuestionPage {
 		let data = try await send(
 			"GET",
 			"/api/v1/questions",
 			baseURL: baseURL,
 			queryItems: [URLQueryItem(name: "processId", value: String(processId))]
 		)
-		return try decode(HomerQuestionList.self, from: data).questions
+		return try decode(HomerQuestionPage.self, from: data)
 	}
 
 	/// Cancels an ask-and-dispatch question before it is answered: the question expires and its
