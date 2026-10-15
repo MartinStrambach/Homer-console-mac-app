@@ -14,10 +14,11 @@ public struct HomerClient: Sendable {
 	public var killProcess: @Sendable (_ baseURL: String, _ id: Int) async throws -> Void
 	/// Returns the new run's id.
 	public var retryProcess: @Sendable (_ baseURL: String, _ id: Int) async throws -> Int
-	public var openQuestions: @Sendable (_ baseURL: String) async throws -> [HomerQuestion]
+	/// The open questions, oldest first: one page (the server's default 100) and the total.
+	public var openQuestions: @Sendable (_ baseURL: String) async throws -> HomerQuestionPage
 	public var answerQuestion: @Sendable (_ baseURL: String, _ id: String, _ answer: String) async throws -> Void
-	/// Every question one run asked, whatever its status.
-	public var runQuestions: @Sendable (_ baseURL: String, _ processId: Int) async throws -> [HomerQuestion]
+	/// Every question one run asked, whatever its status (one page of them since Homer 1.34).
+	public var runQuestions: @Sendable (_ baseURL: String, _ processId: Int) async throws -> HomerQuestionPage
 	/// Cancels the dispatch of a question not answered yet, expiring the question with it.
 	public var cancelDispatch: @Sendable (_ baseURL: String, _ id: Int) async throws -> Void
 	/// The runners and the last orphan pod sweep.

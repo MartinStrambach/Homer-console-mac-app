@@ -95,7 +95,7 @@ struct HomerConsoleReducerTests {
 				return HomerProcessPage(processes: [], total: 0)
 			}
 			$0[HomerClient.self].agentNames = { _ in [] }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerClient.self].version = { _ in "1.32.0" }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
@@ -120,6 +120,7 @@ struct HomerConsoleReducerTests {
 	func questionCountsAcrossInstances() {
 		var state = signedInState(selected: Self.first)
 		state.instances[id: Self.second]?.questions = [question]
+		state.instances[id: Self.second]?.questionsTotal = 1
 
 		#expect(state.openQuestionCount == 1)
 		#expect(state.otherInstancesOpenQuestionCount == 1)
@@ -144,7 +145,7 @@ struct HomerConsoleReducerTests {
 		} withDependencies: {
 			$0.continuousClock = clock
 			$0[HomerClient.self].login = { _, _, _ in admin }
-			$0[HomerClient.self].openQuestions = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 		}
 
 		await store.send(.addInstanceTapped) {

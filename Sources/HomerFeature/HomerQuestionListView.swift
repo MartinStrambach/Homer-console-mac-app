@@ -37,6 +37,7 @@ struct HomerQuestionListView: View {
 								store.send(.processTapped(processId: processId))
 							}
 						}
+						HomerQuestionsPastPageNote(shown: store.questions.count, total: store.questionsTotal)
 					}
 					.padding()
 					// A readable measure on a wide window, as the Costs page.
@@ -55,8 +56,12 @@ struct HomerRunQuestionsView: View {
 	let store: StoreOf<HomerInstanceReducer>
 	let processId: Int
 
+	private var runQuestions: HomerRunQuestions? {
+		store.runQuestions.flatMap { $0.processId == processId ? $0 : nil }
+	}
+
 	private var questions: [HomerQuestion] {
-		if let runQuestions = store.runQuestions, runQuestions.processId == processId {
+		if let runQuestions {
 			return Array(runQuestions.questions)
 		}
 		return store.questions.filter { $0.processId == processId }
@@ -73,8 +78,25 @@ struct HomerRunQuestionsView: View {
 							store.send(.processDetail(.presented(.processLinkTapped(processId: processId))))
 						}
 					}
+					HomerQuestionsPastPageNote(shown: questions.count, total: runQuestions?.total ?? questions.count)
 				}
 			}
+		}
+	}
+}
+
+/// Since Homer 1.34 a question list is one page, the oldest 100: what the console says when more
+/// wait past it (`question-list.tsx`).
+private struct HomerQuestionsPastPageNote: View {
+	let shown: Int
+	let total: Int
+
+	var body: some View {
+		if total > shown {
+			Text("Showing the oldest \(shown) of \(total) questions; answering them brings the rest into view.")
+				.scaledFont(.callout)
+				.foregroundStyle(.secondary)
+				.frame(maxWidth: .infinity, alignment: .leading)
 		}
 	}
 }

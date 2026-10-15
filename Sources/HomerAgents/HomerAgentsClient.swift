@@ -63,8 +63,9 @@ extension HomerAPI {
 
 	/// `POST /api/v1/agents/{name}/cron-run` (Homer 1.31, ADR-0080): source `cron`, owner
 	/// `system:cron`, no inputs, the cron tick's own preflights. Answers 204 with no body even
-	/// when a preflight (cost cap, cooldown, lock, parallel-run cap) starts nothing — that is
-	/// only logged, as on a tick — and 404 to a non-admin as for an unknown agent. The run's id
+	/// when the cost cap or the cooldown starts nothing — that is only logged, as on a tick; a
+	/// lock, parallel-run or queued-runs refusal starts a run that ends FAILED (as the console
+	/// says since Homer 1.34) — and 404 to a non-admin as for an unknown agent. The run's id
 	/// shows up later as the agent's `cron.lastRunProcessId`.
 	static func fireAgentCron(baseURL: String, name: String) async throws {
 		_ = try await send(
