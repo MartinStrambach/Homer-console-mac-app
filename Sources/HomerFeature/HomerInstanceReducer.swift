@@ -113,6 +113,9 @@ public struct HomerInstanceReducer: Sendable {
 		@Presents
 		public var processDetail: HomerProcessDetailReducer.State?
 		public internal(set) var processDetailOpenedFrom: HomerConsoleReducer.Tab = .processes
+		/// The command bar (⌘K), over whichever page is on screen.
+		@Presents
+		public var commandBar: HomerCommandBarReducer.State?
 
 		/// Whether this instance is the one on screen. Its processes are polled only then; the
 		/// questions of every signed-in instance always, for the badges.
@@ -268,6 +271,9 @@ public struct HomerInstanceReducer: Sendable {
 		case agents(HomerAgentsReducer.Action)
 		case costs(HomerCostsReducer.Action)
 		case processDetail(PresentationAction<HomerProcessDetailReducer.Action>)
+		/// The header's command bar button (⌘K).
+		case commandBarTapped
+		case commandBar(PresentationAction<HomerCommandBarReducer.Action>)
 
 		public typealias ProcessAction = HomerProcessAction
 
@@ -767,11 +773,32 @@ public struct HomerInstanceReducer: Sendable {
 				state.pendingContinuations = count
 				return .none
 
-			case .continuations, .agents, .costs:
+			case .commandBarTapped:
+				guard state.user != nil else {
+					return .none
+				}
+				state.commandBar = HomerCommandBarReducer.State(baseURL: state.baseURL)
+				return .none
+
+			case let .commandBar(.presented(.delegate(delegate))):
+				state.commandBar = nil
+				switch delegate {
+				case .unauthorized:
+					return state.user == nil ? .none : expireSession(&state)
+				case let .openProcess(processId):
+					return .send(.processTapped(processId: processId))
+				case .continuationsChanged:
+					return .none
+				}
+
+			case .continuations, .agents, .costs, .commandBar:
 				return .none
 			}
 		}
 		.ifLet(\.$alert, action: \.alert)
+		.ifLet(\.$commandBar, action: \.commandBar) {
+			HomerCommandBarReducer()
+		}
 		.ifLet(\.$processDetail, action: \.processDetail) {
 			HomerProcessDetailReducer()
 		}
@@ -1072,6 +1099,7 @@ public struct HomerInstanceReducer: Sendable {
 		state.tagFilter = []
 		state.parentFilter = nil
 		state.alert = nil
+		state.commandBar = nil
 		state.questions = []
 		state.hasLoadedQuestions = false
 		state.questionsError = nil

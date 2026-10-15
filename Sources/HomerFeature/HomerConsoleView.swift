@@ -87,6 +87,10 @@ public struct HomerConsoleView<Leading: View>: View {
 					}
 
 					if showsConsole, let instance = store.selectedInstance, let user = instance.user {
+						if let instanceStore = selectedInstanceStore {
+							CommandBarButton(store: instanceStore)
+						}
+
 						HeaderButton(
 							icon: "arrow.clockwise",
 							tooltip: "Refresh (⌘R)",
@@ -393,6 +397,28 @@ private struct OtherInstancesQuestionBadge: View {
 				.frame(minWidth: 16, minHeight: 16)
 				.background(.orange, in: Capsule())
 				.shadow(color: .black.opacity(0.2), radius: 1, y: 0.5)
+		}
+	}
+}
+
+/// The header's command bar button (⌘K) and its popover, which hangs from the header so that
+/// the run it opens can replace the page under it.
+private struct CommandBarButton: View {
+	@Bindable
+	var store: StoreOf<HomerInstanceReducer>
+
+	var body: some View {
+		HeaderButton(
+			icon: "command",
+			tooltip: "Run a Slack command (⌘K)",
+			action: { store.send(.commandBarTapped) }
+		)
+		.keyboardShortcut("k", modifiers: .command)
+		.popover(
+			item: $store.scope(\.$commandBar, action: \.commandBar),
+			arrowEdge: .bottom
+		) { commandBarStore in
+			HomerCommandBarView(store: commandBarStore)
 		}
 	}
 }

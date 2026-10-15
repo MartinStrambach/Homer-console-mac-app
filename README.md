@@ -2,7 +2,7 @@
 
 # Homer Console for Mac
 
-A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page, creating an agent, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
+A native macOS client for Homer consoles: sign-in, the process list and a process's page, the Slack connector's commands from a ⌘K bar, the open questions, continuations, agents and schedules, costs, an agent's page, creating an agent, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
 
 It is a Swift package, `HomerFeature`, which [Bridge Commander](https://github.com/MartinStrambach/Bridge-Commander) embeds as its Homer section, and a standalone app (`App/`) that runs only the console.
 
@@ -48,7 +48,7 @@ HomerConsoleView(store: store) {
 ```
 
 - Send `start` once at launch, not when the console comes on screen: every instance checks its session and polls its open questions from then on, so `store.openQuestionCount` can badge something (Bridge Commander's section switcher, the app's Dock icon) before the console is ever shown. The console starts and stops its own on-screen polling from `onAppear`/`onDisappear`
-- The header binds ⌘R (refresh) and ⌘1…⌘9 (instances). A host with shortcuts of its own on those keys disables them while the console is shown
+- The header binds ⌘R (refresh), ⌘K (the command bar) and ⌘1…⌘9 (instances). A host with shortcuts of its own on those keys disables them while the console is shown
 - The console expects a window with a hidden title bar (`.windowStyle(.hiddenTitleBar)`): its header acts as the title bar (double-click zooms, drag moves)
 - Data lives in the host's own storage: the instance list and selection in its user defaults (`homerInstanceURLs`, `homerSelectedInstance`), sessions and usernames in `~/Library/Application Support/<bundle identifier>/` (`homerSessions.json`, `homerUsernames.json`). Embedded in Bridge Commander they are Bridge Commander's; the standalone app has its own
 
@@ -94,5 +94,5 @@ Each module's notes are in its own README, next to its sources:
 What holds across modules:
 
 - Hybrid by design. The lists, a process's page, an agent's page and editor, New Agent and the sidebar's pages are native and poll the API; what is left (the graph of a workflow whose server sends only Mermaid) opens the web console's page in a sheet (`HomerWebPageView`, SwiftUI `WebView`/`WebPage`), with "Open in Browser" beside it. The header's Safari button opens the current tab's page the same way
-- The API and its JSON are mirrored from the Homer repo: `console/types/homer.ts` (models), `console/lib/api/client.ts` (calls), `app/SERVER.md` (endpoints, auth). Only the fields the lists show are decoded; unknown fields are ignored and unknown statuses decode as `.unknown`, so a newer server keeps working. Timestamps are Unix epoch **seconds**
+- The API and its JSON are mirrored from the Homer repo: `console/types/homer.ts` (models), `console/lib/api/client.ts` (calls), `app/SERVER.md` (endpoints, auth). Only the fields the lists show are decoded; unknown fields are ignored and unknown statuses decode as `.unknown`, so a newer server keeps working. Timestamps are Unix epoch **seconds**. One call has no console counterpart: the command bar's `GET /api/v1/commands`, the Slack connector's commands as Homer serves them (homer-slack's `config.yaml` for their meaning)
 - **Sheets have a fixed ideal size.** A sheet sizes itself from its content's ideal size and re-measures when it changes. A lazy stack in a scroll view reports its whole content's height as its ideal height, and that height changes as rows are measured — a long list in a sheet made the sheet re-measure, the stack re-estimate, and the main thread spin for minutes (seen in Bridge Commander's diff viewer). So long content in a sheet is a `List` (rows recycle; its ideal size is 0×0) or an `NSTextView`, and a sheet that should resize says so with `.presentationSizing(.fitted)`

@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import DependenciesTestSupport
 import Foundation
+@testable import HomerAgents
 @testable import HomerContinuations
 @testable import HomerCore
 @testable import HomerCosts
@@ -679,6 +680,45 @@ struct HomerInstanceReducerTests {
 			$0.runQuestions = HomerRunQuestions(processId: 43, questions: [])
 		}
 		await store.skipInFlightEffects()
+	}
+
+	@Test("a run the command bar starts closes the bar and opens the run's page")
+	func commandBarOpensRun() async {
+		let store = TestStore(initialState: signedInState()) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0[HomerCommandsClient.self].run = { _, _, _ in 43 }
+		}
+
+		await store.send(.commandBarTapped) {
+			$0.commandBar = HomerCommandBarReducer.State(baseURL: Self.baseURL)
+		}
+		await store.send(\.commandBar.binding.text, "check MOB-1") {
+			$0.commandBar?.text = "check MOB-1"
+		}
+		await store.send(\.commandBar.commandsLoaded, .success(HomerCommandList(commands: [
+			HomerCommand(command: "check", agent: "factory-check", promptParam: "ticket_id"),
+		]))) {
+			$0.commandBar?.commands = .loaded(HomerCommandList(commands: [
+				HomerCommand(command: "check", agent: "factory-check", promptParam: "ticket_id"),
+			]))
+		}
+		await store.send(\.commandBar.runTapped) {
+			$0.commandBar?.isRunning = true
+		}
+		await store.receive(\.commandBar.runFinished) {
+			$0.commandBar?.isRunning = false
+		}
+		await store.receive(\.commandBar.delegate) {
+			$0.commandBar = nil
+		}
+		await store.receive(\.processTapped) {
+			$0.processDetail = HomerProcessDetailReducer.State(
+				baseURL: Self.baseURL,
+				processId: 43,
+				user: admin
+			)
+		}
 	}
 
 	@Test("a refused kill says why")
