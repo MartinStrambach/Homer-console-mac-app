@@ -32,6 +32,7 @@ struct HomerAgentDetailView: View {
 				}
 			}
 		}
+		.onMouseBackButton { store.send(.backTapped) }
 		.alert($store.scope(\.$alert, action: \.alert))
 	}
 

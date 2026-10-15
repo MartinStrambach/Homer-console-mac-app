@@ -52,6 +52,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		.sheet(item: $store.webPage) { page in
 			HomerWebPageView(page: page)
 		}
+		.onMouseBackButton { store.send(.backTapped) }
 		.alert($store.scope(\.$alert, action: \.alert))
 	}
 

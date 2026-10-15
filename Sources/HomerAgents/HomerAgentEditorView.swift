@@ -38,6 +38,7 @@ struct HomerAgentEditorView: View {
 				notice("Agent Not Found", systemImage: "questionmark.square.dashed", "No agent named \(store.agentName). A reload may have removed it.")
 			}
 		}
+		.onMouseBackButton { store.send(.backTapped) }
 		.alert($store.scope(\.$alert, action: \.alert))
 		.alert("New File", isPresented: $store.isNewFilePromptShown) {
 			TextField("Path", text: $store.newFileName)
