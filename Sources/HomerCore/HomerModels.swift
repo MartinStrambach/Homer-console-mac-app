@@ -227,6 +227,12 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		case langfuseTraceUrl
 	}
 
+	/// A run a cron tick started, or one of its sub-runs: the scheduler stamps its runs' owner
+	/// `system:cron` and sub-runs inherit it (Homer's SERVER.md, "Process ownership").
+	public var isScheduled: Bool {
+		owner == "system:cron"
+	}
+
 	/// A run that can still be killed (the console's `canKill`).
 	public var isKillable: Bool {
 		status == .working || status == .created

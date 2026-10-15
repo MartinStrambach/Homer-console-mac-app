@@ -91,6 +91,10 @@ struct HomerProcessListView: View {
 				}
 				.buttonStyle(.scaledBordered)
 
+				Toggle("Hide scheduled runs", isOn: $store.hidesScheduledRuns)
+					.toggleStyle(.checkbox)
+					.help("Leave out the runs a cron schedule started, and their sub-runs")
+
 				Spacer()
 
 				if store.hasLoadedProcesses {
@@ -173,6 +177,16 @@ struct HomerProcessListView: View {
 				description: store.hasActiveFilters ? "No runs match the filters." : "No runs yet."
 			)
 		}
+		else if store.visibleProcesses.isEmpty {
+			// Every loaded row is scheduled; older runs may not be, so Load More stays at hand.
+			EmptyStateView(
+				title: "No Processes",
+				systemImage: "tray",
+				description: "Every loaded run is scheduled."
+			)
+			Divider()
+			footer
+		}
 		else {
 			table
 			Divider()
@@ -181,7 +195,7 @@ struct HomerProcessListView: View {
 	}
 
 	private var table: some View {
-		Table(store.processes, selection: $selection) {
+		Table(store.visibleProcesses, selection: $selection) {
 			TableColumn("ID") { process in
 				Button {
 					store.send(.processTapped(processId: process.id))
@@ -390,10 +404,16 @@ struct HomerProcessListView: View {
 
 	private var footer: some View {
 		HStack {
-			Text("Showing \(store.processes.count) of \(store.processTotal) processes")
+			Text("Showing \(store.visibleProcesses.count) of \(store.processTotal) processes")
 				.scaledFont(.callout)
 				.foregroundStyle(.secondary)
 				.monospacedDigit()
+			if store.hiddenScheduledRunCount > 0 {
+				Text("(\(store.hiddenScheduledRunCount) scheduled hidden)")
+					.scaledFont(.callout)
+					.foregroundStyle(.tertiary)
+					.monospacedDigit()
+			}
 			Spacer()
 			if store.canLoadMoreProcesses {
 				Button("Load More") { store.send(.loadMoreProcessesTapped) }
