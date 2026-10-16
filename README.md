@@ -2,7 +2,7 @@
 
 # Homer Console for Mac
 
-A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page, creating an agent, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
+A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, an agent's page, creating an agent, its file editor and debug runs, LangGraph workflow graphs, and a Chat page that starts and continues agent conversations through an instance's conversation proxy, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
 
 It is a Swift package, `HomerFeature`, which [Bridge Commander](https://github.com/MartinStrambach/Bridge-Commander) embeds as its Homer section, and a standalone app (`App/`) that runs only the console.
 
@@ -19,6 +19,7 @@ Sources/
   HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor
   HomerContinuations/   # Continuations page
   HomerCosts/           # Costs page (admins)
+  HomerConversations/   # Chat page: conversations through the instance's conversation proxy (homer-proxy)
   HomerFeature/         # HomerConsoleReducer/View, HomerInstanceReducer, process list, questions — composes the rest
 Tests/<Module>Tests/    # one Swift Testing target per module
 App/                    # the standalone app (project.yml + generated HomerConsole.xcodeproj)
@@ -50,7 +51,7 @@ HomerConsoleView(store: store) {
 - Send `start` once at launch, not when the console comes on screen: every instance checks its session and polls its open questions from then on, so `store.openQuestionCount` can badge something (Bridge Commander's section switcher, the app's Dock icon) before the console is ever shown. The console starts and stops its own on-screen polling from `onAppear`/`onDisappear`
 - The header binds ⌘R (refresh) and ⌘1…⌘9 (instances). A host with shortcuts of its own on those keys disables them while the console is shown
 - The console expects a window with a hidden title bar (`.windowStyle(.hiddenTitleBar)`): its header acts as the title bar (double-click zooms, drag moves)
-- Data lives in the host's own storage: the instance list and selection in its user defaults (`homerInstanceURLs`, `homerSelectedInstance`), sessions and usernames in `~/Library/Application Support/<bundle identifier>/` (`homerSessions.json`, `homerUsernames.json`). Embedded in Bridge Commander they are Bridge Commander's; the standalone app has its own
+- Data lives in the host's own storage: the instance list and selection in its user defaults (`homerInstanceURLs`, `homerSelectedInstance`), sessions, usernames and each instance's conversation proxy in `~/Library/Application Support/<bundle identifier>/` (`homerSessions.json`, `homerUsernames.json`, `homerProxies.json`). Embedded in Bridge Commander they are Bridge Commander's; the standalone app has its own
 
 ## The standalone app
 
@@ -88,6 +89,7 @@ Each module's notes are in its own README, next to its sources:
 | `HomerAgents` | [Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor and debug runs](Sources/HomerAgents/README.md) |
 | `HomerContinuations` | [the Continuations page](Sources/HomerContinuations/README.md) |
 | `HomerCosts` | [the Costs page](Sources/HomerCosts/README.md) |
+| `HomerConversations` | [the Chat page: the conversation proxy, its token, live events and the poll behind them](Sources/HomerConversations/README.md) |
 | `HomerFeature` | [instances, the instance list, polling, the process list, the other pages, questions](Sources/HomerFeature/README.md) |
 | Tests | [test targets, `@Shared` in `TestStore`](Tests/README.md) |
 

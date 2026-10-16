@@ -329,12 +329,8 @@ struct HomerQuestionCard: View {
 		store.send(.answerTapped(questionId: question.id, answer: draft.wrappedValue))
 	}
 
-	/// The question's Markdown, inline formatting only with its line breaks kept. Block syntax
-	/// (lists, headings) shows as written, which still reads. Images never load: `Text` does not
-	/// fetch them, which is the point — an agent-supplied image URL would otherwise beacon on
-	/// view, the reason the console renders only their alt text.
+	/// The question's Markdown, as the chat renders its messages.
 	static func markdown(_ text: String) -> AttributedString {
-		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-		return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+		HomerMarkdown.inline(text)
 	}
 }

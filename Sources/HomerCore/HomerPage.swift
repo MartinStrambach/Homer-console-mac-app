@@ -21,4 +21,6 @@ package enum HomerChildPage: Equatable, Sendable {
 	case agents
 	case schedules
 	case costs
+	/// The Chat page: conversations through the instance's proxy.
+	case conversations
 }

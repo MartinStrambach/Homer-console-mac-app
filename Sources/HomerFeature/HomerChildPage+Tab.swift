@@ -14,6 +14,8 @@ extension HomerChildPage {
 			self = .schedules
 		case .costs:
 			self = .costs
+		case .conversations:
+			self = .conversations
 		}
 	}
 }

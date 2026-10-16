@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import HomerAgents
 import HomerContinuations
+import HomerConversations
 import HomerCore
 import HomerCosts
 import HomerProcessDetail
@@ -96,11 +97,14 @@ public struct HomerConsoleView<Leading: View>: View {
 						// Commander's `RootRepositoryView` does), so this one has the key to itself.
 						.keyboardShortcut("r", modifiers: .command)
 
-						HeaderButton(
-							icon: "safari",
-							tooltip: "Open this page of the web console",
-							action: openCurrentPageInWebConsole
-						)
+						// Only for a page the web console has: the Chat page is the app's own.
+						if let path = store.tab.webConsolePath {
+							HeaderButton(
+								icon: "safari",
+								tooltip: "Open this page of the web console",
+								action: { store.send(.openWebConsoleTapped(path: path, title: store.tab.title)) }
+							)
+						}
 
 						accountMenu(user: user, instance: instance)
 					}
@@ -288,9 +292,6 @@ public struct HomerConsoleView<Leading: View>: View {
 		.help("Signed in as \(user.username)")
 	}
 
-	private func openCurrentPageInWebConsole() {
-		store.send(.openWebConsoleTapped(path: store.tab.webConsolePath, title: store.tab.title))
-	}
 }
 
 /// The selected instance: its sign-in form while signed out, otherwise the page the header's
@@ -339,6 +340,8 @@ struct HomerInstanceView: View {
 						HomerAgentsView(store: store.scope(\.agents, action: \.agents), user: user)
 					case .costs:
 						HomerCostsView(store: store.scope(\.costs, action: \.costs))
+					case .conversations:
+						HomerConversationsView(store: store.scope(\.conversations, action: \.conversations))
 					}
 				}
 			}

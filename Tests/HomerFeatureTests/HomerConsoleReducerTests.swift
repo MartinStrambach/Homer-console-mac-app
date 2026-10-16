@@ -192,12 +192,14 @@ struct HomerConsoleReducerTests {
 	@Test("removing the instance on screen signs it out and shows the next")
 	func removeSelectedInstance() async {
 		let signedOut = LockIsolated<[String]>([])
+		let forgottenProxies = LockIsolated<[String]>([])
 		@Shared(.homerUsernames) var usernames
 		$usernames.withLock { $0 = [Self.first: "admin", Self.second: "admin"] }
 		let store = TestStore(initialState: signedInState(selected: Self.first)) {
 			HomerConsoleReducer()
 		} withDependencies: {
 			$0[HomerClient.self].logout = { baseURL in signedOut.withValue { $0.append(baseURL) } }
+			$0[HomerProxySettingsClient.self].remove = { baseURL in forgottenProxies.withValue { $0.append(baseURL) } }
 		}
 
 		await store.send(.removeInstanceTapped(Self.first)) {
@@ -208,6 +210,7 @@ struct HomerConsoleReducerTests {
 		await store.finish()
 
 		#expect(signedOut.value == [Self.first])
+		#expect(forgottenProxies.value == [Self.first])
 		#expect(usernames == [Self.second: "admin"])
 	}
 
@@ -220,6 +223,7 @@ struct HomerConsoleReducerTests {
 			HomerConsoleReducer()
 		} withDependencies: {
 			$0[HomerClient.self].logout = { _ in }
+			$0[HomerProxySettingsClient.self].remove = { _ in }
 		}
 
 		await store.send(.removeInstanceTapped(Self.first)) {

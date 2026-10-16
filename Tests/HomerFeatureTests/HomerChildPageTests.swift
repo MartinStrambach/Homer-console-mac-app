@@ -3,6 +3,7 @@ import DependenciesTestSupport
 import Foundation
 @testable import HomerAgents
 @testable import HomerContinuations
+@testable import HomerConversations
 @testable import HomerCore
 import HomerCosts
 @testable import HomerFeature
@@ -237,5 +238,61 @@ struct HomerChildPageTests {
 				dataStoreID: HomerEndpoint.webDataStoreID(baseURL: Self.baseURL)
 			)
 		}
+	}
+
+	@Test("the Chat page is told when it comes on screen, and without a proxy shows its connect form")
+	func conversationsPage() async {
+		let initialState = activeState(user: HomerUser(username: "dev"))
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0[HomerProxySettingsClient.self].load = { _ in nil }
+		}
+
+		await store.send(.pageChanged(.conversations)) {
+			$0.page = .conversations
+			$0.shownChildPage = .conversations
+		}
+		await store.receive(\.conversations.shown) {
+			$0.conversations.isShown = true
+			$0.conversations.setup = HomerProxyConnectReducer.State()
+		}
+		await store.send(.deactivated) {
+			$0.isActive = false
+			$0.shownChildPage = nil
+		}
+		await store.receive(\.conversations.hidden) {
+			$0.conversations.isShown = false
+		}
+	}
+
+	@Test("a run of a conversation opens on the run's page, as a continuation's does")
+	func conversationRunOpens() async {
+		let user = HomerUser(username: "dev")
+		var initialState = activeState(user: user)
+		initialState.page = .conversations
+		initialState.shownChildPage = .conversations
+		initialState.conversations.isShown = true
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerProcessDetailClient.self].process = { _, _ in HomerProcess(id: 12, status: .finished, agentName: "conversation") }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
+			$0[HomerClient.self].runQuestions = { _, _ in HomerQuestionPage(questions: []) }
+		}
+		// The run's page starts its own reads; this test is about reaching it.
+		store.exhaustivity = .off(showSkippedAssertions: false)
+
+		await store.send(.conversations(.delegate(.openProcess(processId: 12))))
+		await store.receive(\.processTapped) {
+			$0.processDetail = HomerProcessDetailReducer.State(baseURL: Self.baseURL, processId: 12, user: user)
+			$0.processDetailOpenedFrom = .conversations
+			$0.shownChildPage = nil
+		}
+		await store.receive(\.conversations.hidden) {
+			$0.conversations.isShown = false
+		}
+		await store.skipInFlightEffects()
 	}
 }
