@@ -6,8 +6,9 @@ import HomerWorkflowGraph
 import SwiftUI
 
 /// A run's page (`app/(dashboard)/processes/[id]/page.tsx`), in place of the page that opened
-/// it: Back, its status and actions, runner, open questions, status timeline and executions,
-/// each execution's output a click away. `backTitle` names that page — Back returns there once
+/// it: Back, its status and actions, runner, open questions, status timeline, the runs around
+/// it (a root's flow, a sub run's children) and executions, each execution's output a click
+/// away. `backTitle` names that page — Back returns there once
 /// no earlier run is left to go back to. The questions are the instance's — answered there, as
 /// on the Questions page — so the instance's view supplies them: `questions` draws the given
 /// run's as a `HomerDetailSection`, or nothing when it has none.
@@ -150,6 +151,16 @@ package struct HomerProcessDetailView<Questions: View>: View {
 				}
 				.buttonStyle(.link)
 			}
+			// One hop up, then the flow's first run (ADR-0058); a root links nowhere, its own
+			// page being the flow's.
+			if let root = process.rootProcessId {
+				Button {
+					store.send(.processLinkTapped(processId: root))
+				} label: {
+					Label("Root run #\(root)", systemImage: "arrow.up.to.line")
+				}
+				.buttonStyle(.link)
+			}
 			if let trace = process.langfuseTraceUrl.flatMap(URL.init(string:)) {
 				Link(destination: trace) {
 					Label("Langfuse trace", systemImage: "arrow.up.right.square")
@@ -220,6 +231,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 						HStack(alignment: .top, spacing: 16) {
 							VStack(alignment: .leading, spacing: 16) {
 								questions(store.processId)
+								HomerRelatedRunsSection(store: store)
 								executions(process)
 							}
 							.frame(maxWidth: .infinity)
@@ -238,6 +250,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 						}
 						questions(store.processId)
 						timeline(process)
+						HomerRelatedRunsSection(store: store)
 						executions(process)
 					}
 				}

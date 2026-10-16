@@ -154,6 +154,7 @@ struct HomerChildPageTests {
 		} withDependencies: {
 			$0.continuousClock = TestClock()
 			$0[HomerProcessDetailClient.self].process = { _, _ in process }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
 			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].runQuestions = { _, _ in HomerQuestionPage(questions: []) }
@@ -177,6 +178,9 @@ struct HomerChildPageTests {
 		await store.receive(\.processDetail.processLoaded) {
 			$0.processDetail?.process = process
 		}
+		await store.receive(\.processDetail.relatedRunsLoaded) {
+			$0.processDetail?.relatedRuns = HomerProcessPage(processes: [], total: 0)
+		}
 
 		// Another page shows its own content; the run's page waits, not polling, and keeps its
 		// questions.
@@ -198,6 +202,7 @@ struct HomerChildPageTests {
 		}
 		await store.receive(\.runQuestionsLoaded)
 		await store.receive(\.processDetail.processLoaded)
+		await store.receive(\.processDetail.relatedRunsLoaded)
 
 		// Back: the page that opened it comes back, and polls again.
 		await store.send(.processDetail(.presented(.backTapped)))

@@ -4,17 +4,21 @@ import HomerCore
 import HomerWorkflowGraph
 
 /// A process's page (`app/(dashboard)/processes/[id]/page.tsx`), natively: its status and
-/// actions, runner, open questions, status timeline and executions — each with its output, and
-/// the LangGraph workflow's state for the command that runs one. Kept current by polling, as the
-/// list is, while it is on screen (`shown`/`hidden`, from the instance). A retry, a resume or a
-/// sub run's link opens the other run here, and Back returns — past the first run, to the page
-/// that opened it (`delegate(.back)`).
+/// actions, runner, open questions, status timeline, the runs around it — a root's whole flow,
+/// any other run's children — and executions, each with its output, and the LangGraph
+/// workflow's state for the command that runs one. Kept current by polling, as the list is,
+/// while it is on screen (`shown`/`hidden`, from the instance). A retry, a resume, a flow run's
+/// or a sub run's link opens the other run here, and Back returns — past the first run, to the
+/// page that opened it (`delegate(.back)`).
 @Reducer
 public struct HomerProcessDetailReducer: Sendable {
 	/// The list's cadence: the poll stands in for the console's status stream.
 	static let pollInterval: Duration = .seconds(5)
 	/// The console's `refetchInterval` for the open workflow.
 	static let workflowPollInterval: Duration = .seconds(5)
+	/// Runs read for the Flow or Child runs list, the console's `FLOW_RUNS_LIMIT`: a flow is one
+	/// debugging unit, so the list says when it is cut rather than paging.
+	static let relatedRunsLimit = 500
 
 	/// Whether the run has a LangGraph workflow, from the cheap probe.
 	public enum LangGraphProbe: Equatable, Sendable {
@@ -48,6 +52,11 @@ public struct HomerProcessDetailReducer: Sendable {
 		/// The workflow's node states, polled while it is shown.
 		public internal(set) var workflow: HomerLangGraphStatus?
 		var isPollingWorkflow = false
+		/// The runs around this one (ADR-0058), read after each poll of the run: a flow root's
+		/// whole flow, oldest first; any other run's direct children. Nil until read.
+		public internal(set) var relatedRuns: HomerProcessPage?
+		/// Whether the Flow list shows the root agent's own resume segments, hidden by default.
+		public internal(set) var showsResumeSegments = false
 
 		/// Kill, retry or resume still waiting on the server.
 		public internal(set) var actionInFlight: Action.ProcessAction?
@@ -84,6 +93,29 @@ public struct HomerProcessDetailReducer: Sendable {
 				return false
 			}
 			return current == langGraphLabel
+		}
+
+		/// A root run's page lists its whole flow; a descendant's lists its direct children.
+		public var isFlowRoot: Bool {
+			process.map { $0.rootProcessId == nil } ?? false
+		}
+
+		/// The root agent's own runs in the flow: the segments a resume of the orchestrator
+		/// starts. Matched by agent name, not by parent — a resume's parent is the run it
+		/// replays, which may be deep in the flow.
+		public var hasResumeSegments: Bool {
+			guard isFlowRoot, let process, let runs = relatedRuns?.processes else {
+				return false
+			}
+			return runs.contains { $0.agentName == process.agentName }
+		}
+
+		/// The flow's runs as listed: without the root agent's resume segments unless asked.
+		public var visibleFlowRuns: [HomerProcess] {
+			guard isFlowRoot, let process, let runs = relatedRuns?.processes else {
+				return []
+			}
+			return showsResumeSegments ? runs : runs.filter { $0.agentName != process.agentName }
 		}
 
 		public var canKill: Bool {
@@ -142,9 +174,11 @@ public struct HomerProcessDetailReducer: Sendable {
 		case processLoaded(processId: Int, Result<HomerProcess, any Error>)
 		case langGraphProbed(processId: Int, currentCommand: String?, Result<HomerLangGraphStatus?, any Error>)
 		case workflowLoaded(processId: Int, Result<HomerLangGraphStatus?, any Error>)
+		case relatedRunsLoaded(processId: Int, Result<HomerProcessPage, any Error>)
 
 		case executionToggled(index: Int)
 		case liveWorkflowToggled
+		case resumeSegmentsToggled
 		case viewOutputTapped(executionIndex: Int, stream: HomerOutputStream)
 		case downloadTapped(path: String)
 		case downloadFinished(path: String, Result<URL, any Error>)
@@ -305,6 +339,25 @@ public struct HomerProcessDetailReducer: Sendable {
 		case .liveWorkflowToggled:
 			state.isLiveWorkflowExpanded.toggle()
 			return syncWorkflow(&state)
+
+		case let .relatedRunsLoaded(processId, result):
+			guard processId == state.processId else {
+				return .none
+			}
+			switch result {
+			case let .success(page):
+				state.relatedRuns = page
+			case let .failure(error):
+				if error as? HomerAPIError == .unauthorized {
+					return .send(.delegate(.unauthorized))
+				}
+				// A failed read keeps the last list, as the console keeps its last answer.
+			}
+			return .none
+
+		case .resumeSegmentsToggled:
+			state.showsResumeSegments.toggle()
+			return .none
 
 		case let .viewOutputTapped(executionIndex, stream):
 			guard let process = state.process else {
@@ -494,6 +547,8 @@ public struct HomerProcessDetailReducer: Sendable {
 		state.langGraphProbe = .unknown
 		state.workflow = nil
 		state.isPollingWorkflow = false
+		state.relatedRuns = nil
+		state.showsResumeSegments = false
 		state.actionInFlight = nil
 		state.downloadingPaths = []
 		state.output = nil
@@ -507,15 +562,34 @@ public struct HomerProcessDetailReducer: Sendable {
 		)
 	}
 
-	/// Fetches the run right away, then every `pollInterval`. Restarting it replaces the loop.
+	/// Fetches the run right away, then every `pollInterval`, and after each answer the runs
+	/// around it — which runs those are depends on the answer. Restarting it replaces the loop.
 	private func poll(_ state: State) -> Effect<Action> {
 		.run { [baseURL = state.baseURL, processId = state.processId] send in
 			while true {
-				await send(.processLoaded(processId: processId, Result { try await client.process(baseURL, processId) }))
+				let result = await Result { try await client.process(baseURL, processId) }
+				await send(.processLoaded(processId: processId, result))
+				if case let .success(process) = result {
+					let query = Self.relatedRunsQuery(for: process)
+					await send(.relatedRunsLoaded(processId: processId, Result {
+						try await homerClient.processes(baseURL, query)
+					}))
+				}
 				try await clock.sleep(for: Self.pollInterval)
 			}
 		}
 		.cancellable(id: CancelID.processPolling, cancelInFlight: true)
+	}
+
+	/// What the page lists under the run (`RelatedRuns` in `page.tsx`): every run of its flow
+	/// for a root — it holds no descendants of its own — else its direct children, oldest first.
+	static func relatedRunsQuery(for process: HomerProcess) -> HomerProcessQuery {
+		if process.rootProcessId == nil {
+			HomerProcessQuery(rootProcessId: process.id, oldestFirst: true, limit: relatedRunsLimit)
+		}
+		else {
+			HomerProcessQuery(parentProcessId: process.id, oldestFirst: true, limit: relatedRunsLimit)
+		}
 	}
 
 	/// Asks the probe when its answer is needed, and polls the workflow's node states exactly

@@ -18,10 +18,11 @@ struct HomerProcessDetailReducerTests {
 		return state
 	}
 
-	@Test("the page polls its run every 5 s")
+	@Test("the page polls its run every 5 s, and the runs around it after each answer")
 	func polls() async {
 		let clock = TestClock()
 		let finished = HomerProcess(id: 7, status: .finished, agentName: "factory")
+		let flow = HomerProcessPage(processes: [HomerProcess(id: 8, status: .working, agentName: "builder", parentProcessId: 7, rootProcessId: 7)], total: 1)
 		let store = TestStore(initialState: state()) {
 			HomerProcessDetailReducer()
 		} withDependencies: {
@@ -31,6 +32,12 @@ struct HomerProcessDetailReducerTests {
 				#expect(id == 7)
 				return finished
 			}
+			$0[HomerClient.self].processes = { baseURL, query in
+				#expect(baseURL == Self.baseURL)
+				// A root's page lists its whole flow, oldest first.
+				#expect(query == HomerProcessQuery(rootProcessId: 7, oldestFirst: true, limit: 500))
+				return flow
+			}
 		}
 
 		await store.send(.shown) {
@@ -39,9 +46,87 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.processLoaded) {
 			$0.process = finished
 		}
+		await store.receive(\.relatedRunsLoaded) {
+			$0.relatedRuns = flow
+		}
 		await clock.advance(by: .seconds(5))
 		await store.receive(\.processLoaded)
+		await store.receive(\.relatedRunsLoaded)
 		await store.skipInFlightEffects()
+	}
+
+	@Test("a sub run's page lists its direct children; a failed read keeps the last list")
+	func childRuns() async {
+		let clock = TestClock()
+		let sub = HomerProcess(id: 8, status: .working, agentName: "builder", parentProcessId: 7, rootProcessId: 7)
+		let children = HomerProcessPage(processes: [HomerProcess(id: 9, status: .finished, agentName: "tester", parentProcessId: 8, rootProcessId: 7)], total: 1)
+		let reads = LockIsolated(0)
+		let store = TestStore(initialState: state()) {
+			HomerProcessDetailReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerProcessDetailClient.self].process = { _, _ in sub }
+			$0[HomerClient.self].processes = { _, query in
+				#expect(query == HomerProcessQuery(parentProcessId: 8, oldestFirst: true, limit: 500))
+				let read = reads.withValue { $0 += 1; return $0 }
+				if read > 1 {
+					throw HomerAPIError.server(status: 500, message: "down")
+				}
+				return children
+			}
+		}
+
+		await store.send(.shown) {
+			$0.isShown = true
+		}
+		await store.receive(\.processLoaded) {
+			$0.process = sub
+		}
+		await store.receive(\.relatedRunsLoaded) {
+			$0.relatedRuns = children
+		}
+		#expect(!store.state.isFlowRoot)
+		await clock.advance(by: .seconds(5))
+		await store.receive(\.processLoaded)
+		await store.receive(\.relatedRunsLoaded)
+		#expect(store.state.relatedRuns == children)
+		await store.skipInFlightEffects()
+	}
+
+	@Test("a root's Flow hides the orchestrator's own resume segments until asked, and another run clears it")
+	func resumeSegments() async {
+		let root = HomerProcess(id: 7, status: .failed, agentName: "factory")
+		let builder = HomerProcess(id: 8, status: .finished, agentName: "builder", parentProcessId: 7, rootProcessId: 7)
+		// A resume of the root: its parent is the run it replays, its agent the root's.
+		let segment = HomerProcess(id: 9, status: .working, agentName: "factory", parentProcessId: 8, rootProcessId: 7)
+		var initialState = state(root)
+		initialState.langGraphProbe = .none(currentCommand: nil)
+		let store = TestStore(initialState: initialState) {
+			HomerProcessDetailReducer()
+		}
+
+		await store.send(.relatedRunsLoaded(processId: 7, .success(HomerProcessPage(processes: [builder, segment], total: 2)))) {
+			$0.relatedRuns = HomerProcessPage(processes: [builder, segment], total: 2)
+		}
+		#expect(store.state.isFlowRoot)
+		#expect(store.state.hasResumeSegments)
+		#expect(store.state.visibleFlowRuns == [builder])
+		await store.send(.resumeSegmentsToggled) {
+			$0.showsResumeSegments = true
+		}
+		#expect(store.state.visibleFlowRuns == [builder, segment])
+
+		// A list read for a run no longer on the page is dropped.
+		await store.send(.relatedRunsLoaded(processId: 6, .success(HomerProcessPage(processes: [], total: 0))))
+
+		await store.send(.processLinkTapped(processId: 8)) {
+			$0.backStack = [7]
+			$0.processId = 8
+			$0.process = nil
+			$0.langGraphProbe = .unknown
+			$0.relatedRuns = nil
+			$0.showsResumeSegments = false
+		}
 	}
 
 	@Test("the page stops polling while the page it covers is off screen, and Refresh waits for it")
@@ -185,6 +270,7 @@ struct HomerProcessDetailReducerTests {
 				return 8
 			}
 			$0[HomerProcessDetailClient.self].process = { _, id in id == 8 ? retried : finished }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 		}
 
 		await store.send(.retryTapped) {
@@ -201,13 +287,20 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.processLoaded) {
 			$0.process = retried
 		}
+		await store.receive(\.relatedRunsLoaded) {
+			$0.relatedRuns = HomerProcessPage(processes: [], total: 0)
+		}
 		await store.send(.backTapped) {
 			$0.backStack = []
 			$0.processId = 7
 			$0.process = nil
+			$0.relatedRuns = nil
 		}
 		await store.receive(\.processLoaded) {
 			$0.process = finished
+		}
+		await store.receive(\.relatedRunsLoaded) {
+			$0.relatedRuns = HomerProcessPage(processes: [], total: 0)
 		}
 		await store.skipInFlightEffects()
 	}
@@ -231,6 +324,7 @@ struct HomerProcessDetailReducerTests {
 			$0.continuousClock = ImmediateClock()
 			$0[HomerClient.self].killProcess = { _, id in killed.withValue { $0.append(id) } }
 			$0[HomerProcessDetailClient.self].process = { _, _ in running }
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 		}
 		store.exhaustivity = .off
 
