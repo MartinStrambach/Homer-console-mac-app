@@ -245,66 +245,25 @@ package nonisolated enum HomerAPI {
 		return (data, http)
 	}
 
-	/// A server-sent event stream (`text/event-stream`), parsed into its events. It ends when
-	/// the server closes it; cancelling the consuming task closes it from this side. Comments
-	/// (the server's heartbeat pings) are skipped.
+	/// A server-sent event stream of the instance, parsed into its events (the reader itself is
+	/// `events(request:session:onResponse:)`, shared with the proxy's stream). The response's
+	/// cookies are fed back to the instance's jar, as every call's are.
 	package static func events(
 		_ path: String,
 		baseURL: String,
 		queryItems: [URLQueryItem] = [],
 		headers: [(name: String, value: String)] = []
 	) -> AsyncThrowingStream<HomerServerSentEvent, any Error> {
-		AsyncThrowingStream { continuation in
-			let task = Task {
-				do {
-					var request = try makeRequest(
-						"GET",
-						path,
-						baseURL: baseURL,
-						queryItems: queryItems,
-						headers: headers,
-						body: nil
-					)
-					request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-					let bytes: URLSession.AsyncBytes
-					let response: URLResponse
-					do {
-						(bytes, response) = try await session(for: baseURL).bytes(for: request)
-					}
-					catch {
-						throw HomerAPIError.unreachable(error.localizedDescription)
-					}
-					guard let http = response as? HTTPURLResponse else {
-						throw HomerAPIError.unexpectedResponse
-					}
-					jar.update(for: baseURL, from: http)
-					try check(http, body: Data(), refusalsInServerWords: false)
-
-					var parser = HomerServerSentEventParser()
-					var line: [UInt8] = []
-					for try await byte in bytes {
-						guard byte == UInt8(ascii: "\n") else {
-							line.append(byte)
-							continue
-						}
-						if let event = parser.consume(line: String(decoding: line, as: UTF8.self)) {
-							continuation.yield(event)
-						}
-						line.removeAll(keepingCapacity: true)
-					}
-					continuation.finish()
-				}
-				catch is CancellationError {
-					continuation.finish()
-				}
-				catch let error as HomerAPIError {
-					continuation.finish(throwing: error)
-				}
-				catch {
-					continuation.finish(throwing: HomerAPIError.unreachable(error.localizedDescription))
-				}
-			}
-			continuation.onTermination = { _ in task.cancel() }
+		let request: URLRequest
+		do {
+			request = try makeRequest("GET", path, baseURL: baseURL, queryItems: queryItems, headers: headers, body: nil)
+		}
+		catch {
+			return AsyncThrowingStream { $0.finish(throwing: error) }
+		}
+		return events(request: request, session: session(for: baseURL)) { http in
+			jar.update(for: baseURL, from: http)
+			try check(http, body: Data(), refusalsInServerWords: false)
 		}
 	}
 
@@ -347,7 +306,8 @@ package nonisolated enum HomerAPI {
 		return request
 	}
 
-	static func check(_ http: HTTPURLResponse, body data: Data, refusalsInServerWords: Bool) throws {
+	/// Throws the `HomerAPIError` a response's status means; a 2xx passes.
+	package static func check(_ http: HTTPURLResponse, body data: Data, refusalsInServerWords: Bool) throws {
 		switch http.statusCode {
 		case 200 ..< 300:
 			return
@@ -393,62 +353,5 @@ package nonisolated enum HomerAPI {
 			var errors: [String]?
 		}
 		return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.errors
-	}
-}
-
-/// One event of a `text/event-stream`.
-package nonisolated struct HomerServerSentEvent: Equatable, Sendable {
-	package var name: String
-	package var id: String?
-	package var data: String
-}
-
-/// The `text/event-stream` format, a line at a time: `event:`, `id:` and `data:` fields
-/// accumulate until a blank line ends the event.
-nonisolated struct HomerServerSentEventParser {
-	private var name: String?
-	private var id: String?
-	private var dataLines: [String] = []
-
-	mutating func consume(line rawLine: String) -> HomerServerSentEvent? {
-		let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
-		guard !line.isEmpty else {
-			defer {
-				name = nil
-				id = nil
-				dataLines = []
-			}
-			guard name != nil || !dataLines.isEmpty else {
-				return nil
-			}
-			return HomerServerSentEvent(name: name ?? "message", id: id, data: dataLines.joined(separator: "\n"))
-		}
-		guard !line.hasPrefix(":") else {
-			return nil
-		}
-		let field: Substring
-		var value: Substring
-		if let colon = line.firstIndex(of: ":") {
-			field = line[..<colon]
-			value = line[line.index(after: colon)...]
-			if value.hasPrefix(" ") {
-				value = value.dropFirst()
-			}
-		}
-		else {
-			field = Substring(line)
-			value = ""
-		}
-		switch field {
-		case "event":
-			name = String(value)
-		case "id":
-			id = String(value)
-		case "data":
-			dataLines.append(String(value))
-		default:
-			break
-		}
-		return nil
 	}
 }

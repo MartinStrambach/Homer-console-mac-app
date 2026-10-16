@@ -8,8 +8,8 @@ import PackageDescription
 /// - `HomerCore`: the API, sessions and cookies, instance endpoints, shared models and formats
 /// - `HomerUI`: text scaling and the views several pages share
 /// - `HomerWorkflowGraph`: LangGraph workflow models, their layered layout and the graph views
-/// - `HomerSignIn`, `HomerProcessDetail`, `HomerAgents`, `HomerContinuations`, `HomerCosts`:
-///   one feature each
+/// - `HomerSignIn`, `HomerProcessDetail`, `HomerAgents`, `HomerContinuations`, `HomerCosts`,
+///   `HomerConversations`: one feature each
 /// - `HomerFeature`: the console and its instances, the process list and questions, composing
 ///   the rest
 let package = Package(
@@ -81,6 +81,14 @@ let package = Package(
 			]
 		),
 		.target(
+			name: "HomerConversations",
+			dependencies: [
+				"HomerCore",
+				"HomerUI",
+				.product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+			]
+		),
+		.target(
 			name: "HomerFeature",
 			dependencies: [
 				"HomerCore",
@@ -90,6 +98,7 @@ let package = Package(
 				"HomerAgents",
 				"HomerContinuations",
 				"HomerCosts",
+				"HomerConversations",
 				.product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
 			]
 		),
@@ -100,6 +109,7 @@ let package = Package(
 		testTarget("HomerAgents"),
 		testTarget("HomerContinuations"),
 		testTarget("HomerCosts"),
+		testTarget("HomerConversations"),
 		testTarget("HomerFeature"),
 	]
 )
