@@ -15,7 +15,7 @@ Sources/
   HomerUI/              # DesignSystem/ (text scaling, surfaces and pills, header button, empty state, title bar area) + Components/ shared by pages
   HomerWorkflowGraph/   # LangGraph workflow models, the dagre-like layout, graph and status views
   HomerSignIn/          # sign-in form (reducer + view), Fill from Passwords
-  HomerProcessDetail/   # a run's page: status, executions, command output, artifacts, Claude transcript
+  HomerProcessDetail/   # a run's page: status, its flow or children, executions, command output, artifacts, Claude transcript
   HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor
   HomerContinuations/   # Continuations page
   HomerCosts/           # Costs page (admins)
