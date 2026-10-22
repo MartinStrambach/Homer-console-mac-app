@@ -7,7 +7,7 @@ struct HomerEndpointTests {
 	@Test(
 		"a URL copied from the console's address bar becomes the instance's base URL",
 		arguments: [
-			("https://mobi-factory-fsmobi.okubefs1.kube.lsoffice.cz/processes", "https://mobi-factory-fsmobi.okubefs1.kube.lsoffice.cz"),
+			("https://homer-team.apps.example.net/processes", "https://homer-team.apps.example.net"),
 			("https://homer.example.com/processes/123?tab=logs#top", "https://homer.example.com"),
 			("https://homer.example.com/questions", "https://homer.example.com"),
 			("https://homer.example.com/", "https://homer.example.com"),
