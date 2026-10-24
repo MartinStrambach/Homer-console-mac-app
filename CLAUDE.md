@@ -11,7 +11,7 @@ Native macOS client for Homer consoles: the `HomerFeature` Swift package (embedd
 
 The module layout, how a host embeds the console and the notes that hold across modules are in `README.md`; each module's design notes and gotchas are in `Sources/<Module>/README.md` (the tests' in `Tests/README.md`) — **read the README of the module you are about to change before editing it**, and record new non-obvious decisions there.
 
-- `Sources/<Module>/` — nine modules, layered: `HomerCore` → `HomerUI` → `HomerWorkflowGraph` → feature modules (`HomerSignIn`, `HomerProcessDetail`, `HomerAgents`, `HomerContinuations`, `HomerCosts`) → `HomerFeature`. A module never imports one below it; when two features need the same thing, it moves up (shared models and API helpers to `HomerCore`, shared views to `HomerUI/Components`)
+- `Sources/<Module>/` — ten modules, layered: `HomerCore` → `HomerUI` → `HomerWorkflowGraph` → feature modules (`HomerSignIn`, `HomerProcessDetail`, `HomerAgents`, `HomerContinuations`, `HomerCosts`, `HomerConversations`) → `HomerFeature`. A module never imports one below it; when two features need the same thing, it moves up (shared models and API helpers to `HomerCore`, shared views to `HomerUI/Components`)
 - `Tests/<Module>Tests/` — one Swift Testing target per module
 - `App/` — the standalone app; `HomerConsole.xcodeproj` is generated from `App/project.yml` by `xcodegen` (run in `App/`), never edited by hand
 

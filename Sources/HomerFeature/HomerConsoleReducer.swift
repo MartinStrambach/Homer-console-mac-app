@@ -18,6 +18,8 @@ public struct HomerConsoleReducer: Sendable {
 	public enum Tab: CaseIterable, Equatable, Sendable {
 		case processes
 		case questions
+		/// Conversations through the instance's proxy. Not a page of the web console.
+		case conversations
 		case continuations
 		case schedules
 		case agents
@@ -28,11 +30,13 @@ public struct HomerConsoleReducer: Sendable {
 			self == .schedules || self == .costs
 		}
 
-		/// The page's route in the web console, which is also its title there.
-		var webConsolePath: String {
+		/// The page's route in the web console, which is also its title there; nil for a page the
+		/// web console has not.
+		var webConsolePath: String? {
 			switch self {
 			case .processes: "processes"
 			case .questions: "questions"
+			case .conversations: nil
 			case .continuations: "continuations"
 			case .schedules: "schedules"
 			case .agents: "agents"
@@ -44,6 +48,7 @@ public struct HomerConsoleReducer: Sendable {
 			switch self {
 			case .processes: "Processes"
 			case .questions: "Questions"
+			case .conversations: "Chat"
 			case .continuations: "Continuations"
 			case .schedules: "Schedules"
 			case .agents: "Agents"
@@ -109,6 +114,10 @@ public struct HomerConsoleReducer: Sendable {
 
 	@Dependency(HomerClient.self)
 	private var homerClient
+
+	/// An instance's proxy settings go with the instance when it is forgotten.
+	@Dependency(HomerProxySettingsClient.self)
+	private var proxySettings
 
 	public init() {}
 
@@ -190,6 +199,7 @@ public struct HomerConsoleReducer: Sendable {
 				state.$instanceURLs.withLock { [ids = state.instances.ids.elements] in $0 = ids }
 				@Shared(.homerUsernames) var usernames
 				$usernames.withLock { _ = $0.removeValue(forKey: id) }
+				proxySettings.remove(id)
 				if state.instances.isEmpty {
 					state.addInstance = HomerSignInReducer.State(addingInstanceCanCancel: false)
 				}
