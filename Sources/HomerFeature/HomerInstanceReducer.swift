@@ -19,10 +19,9 @@ public struct HomerInstanceReducer: Sendable {
 	static let processPollInterval = HomerProcessListing.pollInterval
 	/// The console's own refresh cadence for questions (`useQuestions`).
 	static let questionPollInterval: Duration = .seconds(30)
-	/// The console reads `/health` again when the processes page mounts once a minute has
-	/// passed (`useHealth`'s `staleTime`); here it is polled at that pace while the page is on
-	/// screen.
-	static let healthPollInterval: Duration = .seconds(60)
+	/// The console's `useHealth` cadence since Homer 1.36: the maintenance banner has to appear
+	/// and clear on its own. The server answers from memory, so a read costs it little.
+	static let healthPollInterval: Duration = .seconds(15)
 	/// The console's Flow cells refresh on this cadence too (`useFlowSummary`).
 	static let flowSummaryPollInterval: Duration = .seconds(30)
 	/// Root rows whose Flow cell is summarized, in list order. Each cell is one request, so the
@@ -99,6 +98,8 @@ public struct HomerInstanceReducer: Sendable {
 		/// The last orphan pod sweep, shown above the process list when the instance has a
 		/// Kubernetes runner.
 		public internal(set) var sweep: HomerHealth.Sweep?
+		/// The server's maintenance mode, shown as a banner above every page while it is on.
+		public internal(set) var maintenance = false
 		/// The server's Homer version (`/heartbeat`), read once.
 		public internal(set) var homerVersion: String?
 
@@ -415,11 +416,9 @@ public struct HomerInstanceReducer: Sendable {
 				return .none
 
 			case let .pageChanged(page):
-				let previousPage = state.page
 				state.page = page
 				let questions = page == .questions && state.user != nil ? pollQuestions(state) : .none
-				let health: Effect<Action> = page == previousPage ? .none : syncHealthPolling(state)
-				return .merge(questions, health, syncShownChildPage(&state))
+				return .merge(questions, syncShownChildPage(&state))
 
 			case .signOutTapped:
 				let baseURL = state.baseURL
@@ -444,7 +443,7 @@ public struct HomerInstanceReducer: Sendable {
 					pollQuestions(state),
 					pollRunQuestions(state),
 					state.isActive ? pollPendingContinuationCount(state) : .none,
-					syncHealthPolling(state),
+					state.isActive ? pollHealth(state) : .none,
 					send(state.shownChildPage.map { [ChildPageEvent(page: $0, kind: .refresh)] } ?? []),
 					state.processDetail?.isShown == true ? .send(.processDetail(.presented(.refreshTapped))) : .none
 				)
@@ -718,7 +717,7 @@ public struct HomerInstanceReducer: Sendable {
 					user: user
 				)
 				state.processDetailOpenedFrom = state.page
-				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
+				return syncShownChildPage(&state)
 
 			case .processDetail(.presented(.delegate(.unauthorized))):
 				guard state.user != nil else {
@@ -731,7 +730,7 @@ public struct HomerInstanceReducer: Sendable {
 
 			case .processDetail(.presented(.delegate(.back))):
 				state.processDetail = nil
-				return .merge(syncHealthPolling(state), syncShownChildPage(&state))
+				return syncShownChildPage(&state)
 
 			case .processDetail:
 				return .none
@@ -866,6 +865,7 @@ public struct HomerInstanceReducer: Sendable {
 					return .none
 				}
 				state.sweep = health.kubernetesSweep
+				state.maintenance = health.maintenance
 				return .none
 
 			case let .versionLoaded(version):
@@ -1014,7 +1014,7 @@ public struct HomerInstanceReducer: Sendable {
 			state.isActive ? pollPendingContinuationCount(state) : .none,
 			state.isActive && state.agentNames.isEmpty ? loadAgentNames(state) : .none,
 			state.isActive && state.homerVersion == nil ? loadVersion(state) : .none,
-			syncHealthPolling(state)
+			state.isActive ? pollHealth(state) : .none
 		)
 	}
 
@@ -1134,14 +1134,11 @@ public struct HomerInstanceReducer: Sendable {
 		.cancellable(id: CancelID.runQuestionPolling, cancelInFlight: true)
 	}
 
-	/// `/health` is read only while the process list, which shows its sweep, is on screen — not
-	/// while a run's page covers it. A failure keeps the last answer: the banner has nowhere to
-	/// say why.
-	private func syncHealthPolling(_ state: State) -> Effect<Action> {
-		guard state.user != nil, state.isActive, state.page == .processes, !state.showsProcessDetail else {
-			return .cancel(id: CancelID.healthPolling)
-		}
-		return .run { [baseURL = state.baseURL] send in
+	/// `/health` is read while the instance is on screen, whatever its page: the maintenance
+	/// banner shows above every page, as the console's does above every dashboard page. A failure
+	/// keeps the last answer: the banners have nowhere to say why.
+	private func pollHealth(_ state: State) -> Effect<Action> {
+		.run { [baseURL = state.baseURL] send in
 			while true {
 				if let health = try? await homerClient.health(baseURL) {
 					await send(.healthLoaded(health))
@@ -1292,6 +1289,7 @@ public struct HomerInstanceReducer: Sendable {
 		state.questionToCancel = nil
 		state.runQuestions = nil
 		state.sweep = nil
+		state.maintenance = false
 		state.pendingContinuations = nil
 		state.webPage = nil
 		state.processDetail = nil

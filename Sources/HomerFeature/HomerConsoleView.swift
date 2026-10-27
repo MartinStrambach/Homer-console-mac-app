@@ -311,40 +311,51 @@ struct HomerInstanceView: View {
 				HomerLoginView(store: store.scope(\.signIn, action: \.signIn))
 
 			case let .signedIn(user):
-				if tab.isAdminOnly, !user.isAdmin {
-					ContentUnavailableView(
-						"Admins Only",
-						systemImage: "lock",
-						description: Text("You don’t have access to this page.")
-					)
-				}
-				else if store.showsProcessDetail,
-				        let detailStore = store.scope(\.processDetail, action: \.processDetail.presented)
-				{
-					HomerProcessDetailView(store: detailStore, backTitle: processDetailBackTitle) { processId in
-						HomerRunQuestionsView(store: store, processId: processId)
+				VStack(spacing: 0) {
+					if store.maintenance {
+						HomerMaintenanceBanner()
 					}
-				}
-				else {
-					switch tab {
-					case .processes:
-						HomerProcessListView(store: store)
-					case .questions:
-						HomerQuestionListView(store: store)
-					case .continuations:
-						HomerContinuationsView(store: store.scope(\.continuations, action: \.continuations))
-					case .schedules:
-						HomerSchedulesView(store: store.scope(\.agents, action: \.agents), user: user)
-					case .agents:
-						HomerAgentsView(store: store.scope(\.agents, action: \.agents), user: user)
-					case .costs:
-						HomerCostsView(store: store.scope(\.costs, action: \.costs))
-					}
+					page(for: user)
 				}
 			}
 		}
 		.sheet(item: $store.webPage) { page in
 			HomerWebPageView(page: page)
+		}
+	}
+
+	/// The page the header's picker chose, or the run's page shown in its place.
+	@ViewBuilder
+	private func page(for user: HomerUser) -> some View {
+		if tab.isAdminOnly, !user.isAdmin {
+			ContentUnavailableView(
+				"Admins Only",
+				systemImage: "lock",
+				description: Text("You don’t have access to this page.")
+			)
+		}
+		else if store.showsProcessDetail,
+		        let detailStore = store.scope(\.processDetail, action: \.processDetail.presented)
+		{
+			HomerProcessDetailView(store: detailStore, backTitle: processDetailBackTitle) { processId in
+				HomerRunQuestionsView(store: store, processId: processId)
+			}
+		}
+		else {
+			switch tab {
+			case .processes:
+				HomerProcessListView(store: store)
+			case .questions:
+				HomerQuestionListView(store: store)
+			case .continuations:
+				HomerContinuationsView(store: store.scope(\.continuations, action: \.continuations))
+			case .schedules:
+				HomerSchedulesView(store: store.scope(\.agents, action: \.agents), user: user)
+			case .agents:
+				HomerAgentsView(store: store.scope(\.agents, action: \.agents), user: user)
+			case .costs:
+				HomerCostsView(store: store.scope(\.costs, action: \.costs))
+			}
 		}
 	}
 
@@ -393,6 +404,18 @@ private struct OtherInstancesQuestionBadge: View {
 				.frame(minWidth: 16, minHeight: 16)
 				.background(.orange, in: Capsule())
 				.shadow(color: .black.opacity(0.2), radius: 1, y: 0.5)
+		}
+	}
+}
+
+/// The server's maintenance mode (the console's `maintenance-banner.tsx`, Homer 1.36), above
+/// every page while it is on: cron fires are skipped and new starts wait on the server, so a Run
+/// that seems to hang, or a schedule that never fires, has an explanation on screen.
+struct HomerMaintenanceBanner: View {
+	var body: some View {
+		HomerBanner(tint: .red, systemImage: "wrench.and.screwdriver.fill") {
+			Text("Maintenance mode is on. Scheduled runs are skipped and new runs wait in a queue until an admin turns it off.")
+				.fontWeight(.medium)
 		}
 	}
 }

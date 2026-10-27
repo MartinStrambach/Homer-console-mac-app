@@ -309,44 +309,46 @@ struct HomerInstanceReducerTests {
 		)
 	}
 
-	@Test("the process list reads the sweep while on screen, shown only with a Kubernetes runner")
-	func healthWhileProcessesShown() async {
+	@Test("health is read while the instance is on screen, whatever its page: the sweep and maintenance mode")
+	func healthWhileOnScreen() async {
 		let clock = TestClock()
 		let reads = LockIsolated(0)
 		let sweep = HomerHealth.Sweep(ranAt: 1_700_000_000, scanned: 4, errors: ["pod x: forbidden"])
-		var initialState = signedInState()
-		initialState.isActive = true
-		let store = TestStore(initialState: initialState) {
+		let store = TestStore(initialState: signedInState()) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = clock
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
+			$0[HomerClient.self].agentNames = { _ in [] }
+			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
+			$0[HomerClient.self].version = { _ in "1.37.1" }
 			$0[HomerClient.self].health = { _ in
 				reads.withValue { $0 += 1 }
+				// The first answer has a Kubernetes runner and maintenance on; the next neither.
+				let first = reads.value == 1
 				let runners = [HomerHealth.Runner(alias: "local", type: "local")]
-					+ (reads.value == 1 ? [HomerHealth.Runner(alias: "k8s", type: "kubernetes")] : [])
-				return HomerHealth(runners: runners, sweep: sweep)
+					+ (first ? [HomerHealth.Runner(alias: "k8s", type: "kubernetes")] : [])
+				return HomerHealth(runners: runners, sweep: sweep, maintenance: first)
 			}
+			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
 		}
-
-		// The continuations page loads too; this test is about the sweep.
+		// The other polls run too; this test is about health.
 		store.exhaustivity = .off(showSkippedAssertions: false)
 
-		// Already the page: nothing new to read.
-		await store.send(.pageChanged(.processes))
-		await store.send(.pageChanged(.continuations))
-		#expect(reads.value == 0)
-
-		await store.send(.pageChanged(.processes))
+		await store.send(.activated)
 		await store.receive(\.healthLoaded) {
 			$0.sweep = sweep
+			$0.maintenance = true
 		}
+		// Another page reads it on: the maintenance banner shows above every page.
+		await store.send(.pageChanged(.continuations))
 		await clock.advance(by: HomerInstanceReducer.healthPollInterval)
-		// The Kubernetes runner is gone: nothing to sweep.
 		await store.receive(\.healthLoaded) {
 			$0.sweep = nil
+			$0.maintenance = false
 		}
-		await store.send(.pageChanged(.continuations))
+		await store.send(.deactivated)
 		await clock.advance(by: HomerInstanceReducer.healthPollInterval * 3)
 		#expect(reads.value == 2)
 		await store.skipInFlightEffects()

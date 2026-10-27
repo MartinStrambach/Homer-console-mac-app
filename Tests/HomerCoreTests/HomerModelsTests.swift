@@ -106,6 +106,20 @@ struct HomerModelsTests {
 		#expect(process.lastCommand == nil)
 	}
 
+	@Test("health decodes maintenance mode, off from a server that predates it")
+	func decodesHealth() throws {
+		let json = """
+		{"status":"ok","runners":[{"alias":"local","type":"local"}],"sweep":null,"maintenance":true}
+		"""
+		let health = try JSONDecoder().decode(HomerHealth.self, from: Data(json.utf8))
+		#expect(health.maintenance)
+		#expect(health.runners == [HomerHealth.Runner(alias: "local", type: "local")])
+
+		let older = try JSONDecoder().decode(HomerHealth.self, from: Data(#"{"status":"ok","runners":[]}"#.utf8))
+		#expect(!older.maintenance)
+		#expect(older.sweep == nil)
+	}
+
 	@Test("questions decode with their options and dispatch")
 	func decodesQuestions() throws {
 		let json = """
