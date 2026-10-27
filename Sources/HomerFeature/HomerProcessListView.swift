@@ -26,7 +26,6 @@ struct HomerProcessListView: View {
 			}
 			content
 		}
-		.alert($store.scope(\.$alert, action: \.alert))
 	}
 
 	// MARK: - Filters
