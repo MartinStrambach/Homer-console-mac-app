@@ -28,6 +28,11 @@ public struct HomerInstanceReducer: Sendable {
 	/// Root rows whose Flow cell is summarized, in list order. Each cell is one request, so the
 	/// count is bounded rather than growing with "Load more" — the console caps it the same.
 	static let flowSummaryRowLimit = 20
+	/// Kill All reads the runs to kill in pages of the server's largest `limit`.
+	static let killAllFetchLimit = 1000
+	/// Kill All's kills under way at once. Homer has no bulk kill, and each kill counts against
+	/// the caller's rate limit (300 a minute by default).
+	static let killAllConcurrency = 4
 
 	public enum Session: Equatable, Sendable {
 		/// Asking `/auth/me` whether the stored cookie is still a session.
@@ -68,6 +73,8 @@ public struct HomerInstanceReducer: Sendable {
 		var flowSummaryRootIDs: [HomerProcess.ID] = []
 		/// Kill or retry requests still waiting on the server.
 		public internal(set) var processActionsInFlight: Set<HomerProcess.ID> = []
+		/// The Kill All listing its runs or killing them: one at a time.
+		public internal(set) var killingAll: HomerKillGroup?
 		@Presents
 		public var alert: AlertState<Action.Alert>?
 
@@ -253,6 +260,11 @@ public struct HomerInstanceReducer: Sendable {
 		case killTapped(processId: Int)
 		case retryTapped(processId: Int)
 		case processActionFinished(processId: Int, ProcessAction, Result<Int?, any Error>)
+		/// Lists every run of the group the user may kill, then asks before killing them.
+		case killAllTapped(HomerKillGroup)
+		case killAllListed(HomerKillGroup, Result<[HomerProcess], any Error>)
+		/// Why each kill that failed did.
+		case killAllFinished(processIds: [Int], failures: [Int: any Error])
 		case alert(PresentationAction<Alert>)
 
 		case questionsLoaded(Result<HomerQuestionPage, any Error>)
@@ -284,6 +296,7 @@ public struct HomerInstanceReducer: Sendable {
 
 		public enum Alert: Equatable, Sendable {
 			case killConfirmed(processId: Int)
+			case killAllConfirmed(HomerKillGroup, processIds: [Int])
 		}
 	}
 
@@ -295,6 +308,7 @@ public struct HomerInstanceReducer: Sendable {
 		case continuationCountPolling
 		case runQuestionPolling
 		case healthPolling
+		case killAll
 	}
 
 	@Dependency(HomerClient.self)
@@ -384,13 +398,18 @@ public struct HomerInstanceReducer: Sendable {
 			case let .signIn(.delegate(.signedIn(_, user))), let .signedIn(user):
 				// Someone else's data (the add form signed in to this instance as another user)
 				// is not this user's to see.
-				let cleared = state.user?.username != user.username ? clearData(&state) : nil
+				let isAnotherUser = state.user?.username != user.username
+				let cleared = isAnotherUser ? clearData(&state) : nil
 				state.session = .signedIn(user)
 				rememberUsername(user, in: &state)
 				state.signIn.password = ""
 				state.signIn.loginError = nil
 				state.signIn.sessionExpired = false
-				return .merge(startPolling(state), syncShownChildPage(&state, hidingFirst: cleared))
+				return .merge(
+					isAnotherUser ? .cancel(id: CancelID.killAll) : .none,
+					startPolling(state),
+					syncShownChildPage(&state, hidingFirst: cleared)
+				)
 
 			case .signIn:
 				return .none
@@ -541,6 +560,115 @@ public struct HomerInstanceReducer: Sendable {
 						return nil
 					}))
 				}
+
+			case let .killAllTapped(group):
+				guard state.user != nil, state.killingAll == nil else {
+					return .none
+				}
+				state.killingAll = group
+				return .run { [baseURL = state.baseURL] send in
+					await send(.killAllListed(group, Result { try await listRuns(of: group, baseURL: baseURL) }))
+				}
+				.cancellable(id: CancelID.killAll, cancelInFlight: true)
+
+			case let .killAllListed(group, .success(runs)):
+				guard let user = state.user else {
+					return .none
+				}
+				state.killingAll = nil
+				let killable = runs.filter(user.canKill)
+				let othersCount = runs.count - killable.count
+				let others = othersCount == 0 ? "" : " \(othersCount) more \(othersCount == 1 ? "is" : "are") not yours to kill."
+				guard !killable.isEmpty else {
+					state.alert = AlertState {
+						TextState("No Runs to Kill")
+					} actions: {
+						ButtonState(role: .cancel) {
+							TextState("OK")
+						}
+					} message: {
+						TextState("There are \(group.runs(0)) you may kill.\(others)")
+					}
+					return .none
+				}
+				let instanceName = HomerEndpoint.displayName(of: state.baseURL)
+				state.alert = AlertState {
+					TextState("Kill \(group.runs(killable.count))?")
+				} actions: {
+					ButtonState(role: .destructive, action: .killAllConfirmed(group, processIds: killable.map(\.id))) {
+						TextState(killable.count == 1 ? "Kill 1 Run" : "Kill \(killable.count) Runs")
+					}
+					ButtonState(role: .cancel) {
+						TextState("Cancel")
+					}
+				} message: {
+					TextState(
+						"Every one on \(instanceName) you may kill, whatever the list's filters.\(others) This cannot be undone."
+					)
+				}
+				return .none
+
+			case let .killAllListed(_, .failure(error)):
+				guard state.user != nil else {
+					return .none
+				}
+				state.killingAll = nil
+				if error as? HomerAPIError == .unauthorized {
+					return expireSession(&state)
+				}
+				state.alert = AlertState {
+					TextState("Could Not List the Runs to Kill")
+				} actions: {
+					ButtonState(role: .cancel) {
+						TextState("OK")
+					}
+				} message: {
+					TextState(error.localizedDescription)
+				}
+				return .none
+
+			case let .alert(.presented(.killAllConfirmed(group, processIds))):
+				guard state.user != nil, state.killingAll == nil else {
+					return .none
+				}
+				// A row's own Kill already under way is left to finish on its own.
+				let processIds = processIds.filter { !state.processActionsInFlight.contains($0) }
+				guard !processIds.isEmpty else {
+					return .none
+				}
+				state.killingAll = group
+				state.processActionsInFlight.formUnion(processIds)
+				return .run { [baseURL = state.baseURL] send in
+					await send(.killAllFinished(
+						processIds: processIds,
+						failures: await kill(processIds, baseURL: baseURL)
+					))
+				}
+				.cancellable(id: CancelID.killAll, cancelInFlight: true)
+
+			case let .killAllFinished(processIds, failures):
+				guard state.user != nil else {
+					return .none
+				}
+				state.killingAll = nil
+				state.processActionsInFlight.subtract(processIds)
+				if failures.values.contains(where: { $0 as? HomerAPIError == .unauthorized }) {
+					return expireSession(&state)
+				}
+				let refresh = state.isActive ? pollProcesses(state) : .none
+				guard !failures.isEmpty else {
+					return refresh
+				}
+				state.alert = AlertState {
+					TextState("Could Not Kill \(failures.count) of \(processIds.count) Runs")
+				} actions: {
+					ButtonState(role: .cancel) {
+						TextState("OK")
+					}
+				} message: {
+					TextState(Self.killAllFailureMessage(failures))
+				}
+				return refresh
 
 			case .alert:
 				return .none
@@ -807,6 +935,76 @@ public struct HomerInstanceReducer: Sendable {
 		}
 	}
 
+	/// One line a failed kill, by run, the first few of them.
+	static func killAllFailureMessage(_ failures: [Int: any Error]) -> String {
+		let shown = 10
+		var lines = failures.keys.sorted().prefix(shown).map { id in
+			"#\(id): \(failures[id]?.localizedDescription ?? "")"
+		}
+		if failures.count > shown {
+			lines.append("and \(failures.count - shown) more")
+		}
+		return lines.joined(separator: "\n")
+	}
+
+	// MARK: - Kill All
+
+	/// Every run of the group the user can see, oldest first, past the list's pages and
+	/// filters. A run moving on between two pages can be read twice; it is listed once.
+	private func listRuns(of group: HomerKillGroup, baseURL: String) async throws -> [HomerProcess] {
+		var runs: IdentifiedArrayOf<HomerProcess> = []
+		var offset = 0
+		while true {
+			let query = HomerProcessQuery(
+				statuses: group.statuses,
+				oldestFirst: true,
+				limit: Self.killAllFetchLimit,
+				offset: offset
+			)
+			let page = try await homerClient.processes(baseURL, query)
+			for run in page.processes where run.isKillable {
+				runs.updateOrAppend(run)
+			}
+			offset += page.processes.count
+			if page.processes.isEmpty || offset >= page.total {
+				return runs.elements
+			}
+		}
+	}
+
+	/// Kills the runs a few at a time and returns why the failed ones failed. A run that ended
+	/// meanwhile is no failure: the server answers its kill like any other.
+	private func kill(_ processIds: [Int], baseURL: String) async -> [Int: any Error] {
+		await withTaskGroup(of: (Int, (any Error)?).self) { group in
+			var pending = processIds.makeIterator()
+			let killOne: @Sendable (Int) async -> (Int, (any Error)?) = { id in
+				do {
+					try await homerClient.killProcess(baseURL, id)
+					return (id, nil)
+				}
+				catch {
+					return (id, error)
+				}
+			}
+			for _ in 0 ..< Self.killAllConcurrency {
+				guard let id = pending.next() else {
+					break
+				}
+				group.addTask { await killOne(id) }
+			}
+			var failures: [Int: any Error] = [:]
+			for await (id, error) in group {
+				if let error {
+					failures[id] = error
+				}
+				if let id = pending.next() {
+					group.addTask { await killOne(id) }
+				}
+			}
+			return failures
+		}
+	}
+
 	// MARK: - Polling
 
 	private func startPolling(_ state: State) -> Effect<Action> {
@@ -827,7 +1025,9 @@ public struct HomerInstanceReducer: Sendable {
 			.cancel(id: CancelID.flowSummaryPolling),
 			.cancel(id: CancelID.continuationCountPolling),
 			.cancel(id: CancelID.runQuestionPolling),
-			.cancel(id: CancelID.healthPolling)
+			.cancel(id: CancelID.healthPolling),
+			// Not a poll, but the signed-out user's: no kill of theirs goes out after they left.
+			.cancel(id: CancelID.killAll)
 		)
 	}
 
@@ -1076,6 +1276,7 @@ public struct HomerInstanceReducer: Sendable {
 		state.flowSummaries = [:]
 		state.flowSummaryRootIDs = []
 		state.processActionsInFlight = []
+		state.killingAll = nil
 		state.agentNames = []
 		state.agentFilter = nil
 		state.tagFilter = []

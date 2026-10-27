@@ -107,11 +107,36 @@ struct HomerProcessListView: View {
 					}
 					.help("What the listed runs cost together")
 				}
+
+				killAllMenu
 			}
 			.scaledFont(.callout)
 		}
 		.padding(.horizontal)
 		.padding(.vertical, 8)
+	}
+
+	/// Kills every run of a group the user may kill — not only the rows listed. It asks first,
+	/// with the count.
+	private var killAllMenu: some View {
+		HStack(spacing: 6) {
+			if store.killingAll != nil {
+				ProgressView()
+					.controlSize(.small)
+			}
+			Menu {
+				ForEach(HomerKillGroup.allCases, id: \.self) { group in
+					Button(group.title, role: .destructive) {
+						store.send(.killAllTapped(group))
+					}
+				}
+			} label: {
+				Label("Kill All", systemImage: "xmark.octagon")
+			}
+			.fixedSize()
+			.disabled(store.killingAll != nil)
+			.help("Kill every working or created run you may kill, whatever the filters")
+		}
 	}
 
 	private func statusChip(_ status: HomerProcessStatus) -> some View {
