@@ -1,8 +1,8 @@
 import Foundation
 
-/// `GET /api/v1/health` (`HealthResponse`): the instance's runners and the orphan pod sweep it
-/// last ran at startup. A status page for people, not a probe — it does not turn 503 while the
-/// server drains.
+/// `GET /api/v1/health` (`HealthResponse`): the instance's runners, the orphan pod sweep it
+/// last ran at startup and whether maintenance mode is on. A status page for people, not a
+/// probe — it does not turn 503 while the server drains.
 public nonisolated struct HomerHealth: Equatable, Sendable, Decodable {
 	public nonisolated struct Runner: Equatable, Sendable, Decodable {
 		public var alias: String
@@ -46,10 +46,26 @@ public nonisolated struct HomerHealth: Equatable, Sendable, Decodable {
 
 	public var runners: [Runner]
 	public var sweep: Sweep?
+	/// The admin maintenance mode (Homer 1.36, ADR-0092): while it is on, cron fires are skipped
+	/// and new starts wait in a queue until an admin turns it off. False from an older server,
+	/// which does not send it.
+	public var maintenance: Bool
 
-	public init(runners: [Runner], sweep: Sweep? = nil) {
+	public init(runners: [Runner], sweep: Sweep? = nil, maintenance: Bool = false) {
 		self.runners = runners
 		self.sweep = sweep
+		self.maintenance = maintenance
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case runners, sweep, maintenance
+	}
+
+	public init(from decoder: any Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		runners = try container.decode([Runner].self, forKey: .runners)
+		sweep = try container.decodeIfPresent(Sweep.self, forKey: .sweep)
+		maintenance = try container.decodeIfPresent(Bool.self, forKey: .maintenance) ?? false
 	}
 
 	/// The sweep worth showing: the console's banner is there only with a Kubernetes runner,

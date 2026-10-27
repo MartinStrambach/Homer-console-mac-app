@@ -74,9 +74,6 @@ package struct HomerLastCommandView: View {
 		case .failed:
 			Image(systemName: "xmark")
 				.foregroundStyle(.red)
-		case .skipped:
-			Image(systemName: "minus.circle")
-				.foregroundStyle(.secondary)
 		}
 	}
 }

@@ -259,29 +259,20 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		case running
 		case succeeded
 		case failed
-		case skipped
 	}
 
 	/// The console's "Last Command" column (`getLastCommand` in `lib/utils/process.ts`): the
-	/// running command of a working process, else the most recent execution's outcome.
+	/// running command of a working process, else the outcome of the most recent execution that
+	/// ran. A command its `when:` skipped never ran, so trailing skips are passed over (Homer
+	/// 1.37.1), and a run whose every command was skipped has none.
 	public var lastCommand: (outcome: LastCommandOutcome, label: String)? {
 		if status == .working, let currentCommand {
 			return (.running, currentCommand)
 		}
-		guard let last = executions.last else {
+		guard let lastRan = executions.last(where: { $0.skipped != true }) else {
 			return nil
 		}
-		let outcome: LastCommandOutcome =
-			if last.skipped == true {
-				.skipped
-			}
-			else if last.resultCode == 0 {
-				.succeeded
-			}
-			else {
-				.failed
-			}
-		return (outcome, last.label)
+		return (lastRan.resultCode == 0 ? .succeeded : .failed, lastRan.label)
 	}
 }
 

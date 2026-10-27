@@ -95,6 +95,7 @@ struct HomerChildPageTests {
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
+			$0[HomerClient.self].health = { _ in HomerHealth(runners: []) }
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in
 				fetches.withValue { $0 += 1 }
@@ -102,7 +103,7 @@ struct HomerChildPageTests {
 			}
 		}
 
-		// The processes and questions are refreshed too; this test is about the page.
+		// The processes, questions and health are refreshed too; this test is about the page.
 		store.exhaustivity = .off(showSkippedAssertions: false)
 		await store.send(.refreshTapped)
 		await store.receive(\.continuations.refreshTapped)
