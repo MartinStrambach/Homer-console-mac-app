@@ -332,6 +332,7 @@ struct HomerInstanceReducerTests {
 			}
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+			$0[HomerMaintenanceClient.self].maintenance = { _ in HomerMaintenance(enabled: true) }
 		}
 		// The other polls run too; this test is about health.
 		store.exhaustivity = .off(showSkippedAssertions: false)

@@ -262,12 +262,26 @@ public struct HomerConsoleView<Leading: View>: View {
 		}
 	}
 
-	/// Who is signed in, the server's version (the console's corner badge), and Sign Out.
+	/// Who is signed in, the server's version (the console's corner badge), an admin's
+	/// maintenance-mode toggle, and Sign Out.
 	private func accountMenu(user: HomerUser, instance: HomerInstanceReducer.State) -> some View {
 		Menu {
 			Text("Signed in as \(user.username)")
 			if let version = instance.homerVersion {
 				Text("Homer \(version)")
+			}
+			// Only once `/health` has said the server has the mode (Homer 1.36).
+			if user.isAdmin, let isOn = instance.maintenance {
+				Divider()
+				Button {
+					store.send(.instances(.element(id: instance.id, action: .maintenanceToggleTapped)))
+				} label: {
+					Label(
+						isOn ? "Turn Off Maintenance Mode…" : "Turn On Maintenance Mode…",
+						systemImage: "wrench.and.screwdriver"
+					)
+				}
+				.disabled(instance.isSettingMaintenance)
 			}
 			Divider()
 			Button {
@@ -312,13 +326,22 @@ struct HomerInstanceView: View {
 
 			case let .signedIn(user):
 				VStack(spacing: 0) {
-					if store.maintenance {
-						HomerMaintenanceBanner()
+					if store.maintenance == true {
+						HomerMaintenanceBanner(
+							detail: store.maintenanceDetail,
+							isAdmin: user.isAdmin,
+							isTurningOff: store.isSettingMaintenance
+						) {
+							store.send(.maintenanceToggleTapped)
+						}
 					}
 					page(for: user)
 				}
 			}
 		}
+		// The instance's confirmations and failures, whatever the page: the account menu's
+		// maintenance toggle is in the header.
+		.alert($store.scope(\.$alert, action: \.alert))
 		.sheet(item: $store.webPage) { page in
 			HomerWebPageView(page: page)
 		}
@@ -410,12 +433,45 @@ private struct OtherInstancesQuestionBadge: View {
 
 /// The server's maintenance mode (the console's `maintenance-banner.tsx`, Homer 1.36), above
 /// every page while it is on: cron fires are skipped and new starts wait on the server, so a Run
-/// that seems to hang, or a schedule that never fires, has an explanation on screen.
+/// that seems to hang, or a schedule that never fires, has an explanation on screen. An admin
+/// also sees since when and how many starts wait, and can turn it off from here.
 struct HomerMaintenanceBanner: View {
+	let detail: HomerMaintenance?
+	let isAdmin: Bool
+	let isTurningOff: Bool
+	let turnOff: () -> Void
+
 	var body: some View {
 		HomerBanner(tint: .red, systemImage: "wrench.and.screwdriver.fill") {
-			Text("Maintenance mode is on. Scheduled runs are skipped and new runs wait in a queue until an admin turns it off.")
-				.fontWeight(.medium)
+			HStack(alignment: .firstTextBaseline) {
+				VStack(alignment: .leading, spacing: 2) {
+					Text("Maintenance mode is on. Scheduled runs are skipped and new runs wait in a queue until an admin turns it off.")
+						.fontWeight(.medium)
+					if let summary {
+						Text(summary)
+							.foregroundStyle(.secondary)
+					}
+				}
+				Spacer(minLength: 8)
+				if isAdmin {
+					Button("Turn Off…", action: turnOff)
+						.buttonStyle(.scaledBordered)
+						.disabled(isTurningOff)
+				}
+			}
 		}
+	}
+
+	/// "On since 27.10.26 14:02:11 · 3 runs waiting", from what an admin's `/maintenance` read.
+	private var summary: String? {
+		guard let detail else {
+			return nil
+		}
+		var parts: [String] = []
+		if let since = detail.since {
+			parts.append("On since \(HomerFormat.timestamp(since))")
+		}
+		parts.append(detail.queued == 1 ? "1 run waiting" : "\(detail.queued) runs waiting")
+		return parts.joined(separator: " · ")
 	}
 }

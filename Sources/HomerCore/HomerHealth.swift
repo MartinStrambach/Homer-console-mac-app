@@ -47,11 +47,11 @@ public nonisolated struct HomerHealth: Equatable, Sendable, Decodable {
 	public var runners: [Runner]
 	public var sweep: Sweep?
 	/// The admin maintenance mode (Homer 1.36, ADR-0092): while it is on, cron fires are skipped
-	/// and new starts wait in a queue until an admin turns it off. False from an older server,
-	/// which does not send it.
-	public var maintenance: Bool
+	/// and new starts wait in a queue until an admin turns it off. Nil from an older server, which
+	/// has no such mode.
+	public var maintenance: Bool?
 
-	public init(runners: [Runner], sweep: Sweep? = nil, maintenance: Bool = false) {
+	public init(runners: [Runner], sweep: Sweep? = nil, maintenance: Bool? = nil) {
 		self.runners = runners
 		self.sweep = sweep
 		self.maintenance = maintenance
@@ -65,7 +65,7 @@ public nonisolated struct HomerHealth: Equatable, Sendable, Decodable {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		runners = try container.decode([Runner].self, forKey: .runners)
 		sweep = try container.decodeIfPresent(Sweep.self, forKey: .sweep)
-		maintenance = try container.decodeIfPresent(Bool.self, forKey: .maintenance) ?? false
+		maintenance = try container.decodeIfPresent(Bool.self, forKey: .maintenance)
 	}
 
 	/// The sweep worth showing: the console's banner is there only with a Kubernetes runner,

@@ -98,8 +98,13 @@ public struct HomerInstanceReducer: Sendable {
 		/// The last orphan pod sweep, shown above the process list when the instance has a
 		/// Kubernetes runner.
 		public internal(set) var sweep: HomerHealth.Sweep?
-		/// The server's maintenance mode, shown as a banner above every page while it is on.
-		public internal(set) var maintenance = false
+		/// The server's maintenance mode, shown as a banner above every page while it is on; nil
+		/// until `/health` answers, and from a server that predates the mode.
+		public internal(set) var maintenance: Bool?
+		/// For an admin, while the mode is on: when it was turned on and how many starts wait.
+		public internal(set) var maintenanceDetail: HomerMaintenance?
+		/// An admin's turning the mode on or off is under way.
+		public internal(set) var isSettingMaintenance = false
 		/// The server's Homer version (`/heartbeat`), read once.
 		public internal(set) var homerVersion: String?
 
@@ -282,6 +287,11 @@ public struct HomerInstanceReducer: Sendable {
 
 		case healthLoaded(HomerHealth)
 		case versionLoaded(String)
+		/// An admin's account menu or the banner's Turn Off: asks first, then turns the mode the
+		/// other way.
+		case maintenanceToggleTapped
+		case maintenanceLoaded(Result<HomerMaintenance, any Error>)
+		case maintenanceSet(enabled: Bool, Result<HomerMaintenance, any Error>)
 
 		case pendingContinuationCountLoaded(Int)
 
@@ -298,6 +308,7 @@ public struct HomerInstanceReducer: Sendable {
 		public enum Alert: Equatable, Sendable {
 			case killConfirmed(processId: Int)
 			case killAllConfirmed(HomerKillGroup, processIds: [Int])
+			case maintenanceConfirmed(enabled: Bool)
 		}
 	}
 
@@ -309,6 +320,8 @@ public struct HomerInstanceReducer: Sendable {
 		case continuationCountPolling
 		case runQuestionPolling
 		case healthPolling
+		case maintenance
+		case maintenanceToggle
 		case killAll
 	}
 
@@ -317,6 +330,9 @@ public struct HomerInstanceReducer: Sendable {
 
 	@Dependency(HomerContinuationsClient.self)
 	private var continuationsClient
+
+	@Dependency(HomerMaintenanceClient.self)
+	private var maintenanceClient
 
 	@Dependency(\.continuousClock)
 	private var clock
@@ -393,6 +409,7 @@ public struct HomerInstanceReducer: Sendable {
 					.cancel(id: CancelID.flowSummaryPolling),
 					.cancel(id: CancelID.continuationCountPolling),
 					.cancel(id: CancelID.healthPolling),
+					.cancel(id: CancelID.maintenance),
 					syncShownChildPage(&state)
 				)
 
@@ -669,6 +686,21 @@ public struct HomerInstanceReducer: Sendable {
 				}
 				return refresh
 
+			case let .alert(.presented(.maintenanceConfirmed(enabled))):
+				guard state.user?.isAdmin == true, !state.isSettingMaintenance else {
+					return .none
+				}
+				state.isSettingMaintenance = true
+				return .merge(
+					.cancel(id: CancelID.maintenance),
+					.run { [baseURL = state.baseURL] send in
+						await send(.maintenanceSet(enabled: enabled, Result {
+							try await maintenanceClient.setMaintenance(baseURL, enabled)
+						}))
+					}
+					.cancellable(id: CancelID.maintenanceToggle)
+				)
+
 			case .alert:
 				return .none
 
@@ -865,7 +897,64 @@ public struct HomerInstanceReducer: Sendable {
 					return .none
 				}
 				state.sweep = health.kubernetesSweep
+				// A toggle under way answers with the mode's new state; a read sent before it would
+				// put back the old one.
+				guard !state.isSettingMaintenance else {
+					return .none
+				}
 				state.maintenance = health.maintenance
+				guard health.maintenance == true, state.user?.isAdmin == true else {
+					state.maintenanceDetail = nil
+					return .cancel(id: CancelID.maintenance)
+				}
+				return loadMaintenance(state)
+
+			case let .maintenanceLoaded(.success(maintenance)):
+				guard state.user?.isAdmin == true, !state.isSettingMaintenance else {
+					return .none
+				}
+				state.maintenance = maintenance.enabled
+				state.maintenanceDetail = maintenance.enabled ? maintenance : nil
+				return .none
+
+			case .maintenanceLoaded(.failure):
+				// The banner keeps what `/health` said; the other polls report an expired session.
+				return .none
+
+			case .maintenanceToggleTapped:
+				guard state.user?.isAdmin == true, !state.isSettingMaintenance, let isOn = state.maintenance else {
+					return .none
+				}
+				state.alert = isOn ? Self.turnOffMaintenanceAlert(queued: state.maintenanceDetail?.queued) : Self.turnOnMaintenanceAlert
+				return .none
+
+			case let .maintenanceSet(_, .success(maintenance)):
+				guard state.user != nil else {
+					return .none
+				}
+				state.isSettingMaintenance = false
+				state.maintenance = maintenance.enabled
+				state.maintenanceDetail = maintenance.enabled ? maintenance : nil
+				// Read `/health` again at once: one sent before the toggle still says the old mode.
+				return state.isActive ? pollHealth(state) : .none
+
+			case let .maintenanceSet(enabled, .failure(error)):
+				guard state.user != nil else {
+					return .none
+				}
+				state.isSettingMaintenance = false
+				if error as? HomerAPIError == .unauthorized {
+					return expireSession(&state)
+				}
+				state.alert = AlertState {
+					TextState(enabled ? "Could Not Turn On Maintenance Mode" : "Could Not Turn Off Maintenance Mode")
+				} actions: {
+					ButtonState(role: .cancel) {
+						TextState("OK")
+					}
+				} message: {
+					TextState(error.localizedDescription)
+				}
 				return .none
 
 			case let .versionLoaded(version):
@@ -1026,8 +1115,11 @@ public struct HomerInstanceReducer: Sendable {
 			.cancel(id: CancelID.continuationCountPolling),
 			.cancel(id: CancelID.runQuestionPolling),
 			.cancel(id: CancelID.healthPolling),
-			// Not a poll, but the signed-out user's: no kill of theirs goes out after they left.
-			.cancel(id: CancelID.killAll)
+			.cancel(id: CancelID.maintenance),
+			// Not polls, but the signed-out user's: no kill or toggle of theirs goes out after
+			// they left.
+			.cancel(id: CancelID.killAll),
+			.cancel(id: CancelID.maintenanceToggle)
 		)
 	}
 
@@ -1147,6 +1239,50 @@ public struct HomerInstanceReducer: Sendable {
 			}
 		}
 		.cancellable(id: CancelID.healthPolling, cancelInFlight: true)
+	}
+
+	/// An admin's banner says since when and how many starts wait: `/maintenance` is read with
+	/// each `/health` that says the mode is on.
+	private func loadMaintenance(_ state: State) -> Effect<Action> {
+		.run { [baseURL = state.baseURL] send in
+			await send(.maintenanceLoaded(Result { try await maintenanceClient.maintenance(baseURL) }))
+		}
+		.cancellable(id: CancelID.maintenance, cancelInFlight: true)
+	}
+
+	static let turnOnMaintenanceAlert = AlertState<Action.Alert> {
+		TextState("Turn on maintenance mode?")
+	} actions: {
+		ButtonState(role: .destructive, action: .maintenanceConfirmed(enabled: true)) {
+			TextState("Turn On")
+		}
+		ButtonState(role: .cancel) {
+			TextState("Cancel")
+		}
+	} message: {
+		TextState(
+			"For everyone on this instance, scheduled runs are skipped and new runs wait in a queue until an admin turns it off. Runs already under way finish."
+		)
+	}
+
+	static func turnOffMaintenanceAlert(queued: Int?) -> AlertState<Action.Alert> {
+		let waiting = switch queued {
+		case nil, 0?: "Runs started from now on start at once"
+		case 1?: "The run waiting in the queue starts"
+		case let count?: "The \(count) runs waiting in the queue start, a few at a time"
+		}
+		return AlertState {
+			TextState("Turn off maintenance mode?")
+		} actions: {
+			ButtonState(action: .maintenanceConfirmed(enabled: false)) {
+				TextState("Turn Off")
+			}
+			ButtonState(role: .cancel) {
+				TextState("Cancel")
+			}
+		} message: {
+			TextState("\(waiting), and schedules fire again. Scheduled runs skipped meanwhile are not made up.")
+		}
 	}
 
 	/// The console's cadence (`usePendingContinuationsCount`): there is no continuation event to
@@ -1289,7 +1425,9 @@ public struct HomerInstanceReducer: Sendable {
 		state.questionToCancel = nil
 		state.runQuestions = nil
 		state.sweep = nil
-		state.maintenance = false
+		state.maintenance = nil
+		state.maintenanceDetail = nil
+		state.isSettingMaintenance = false
 		state.pendingContinuations = nil
 		state.webPage = nil
 		state.processDetail = nil
