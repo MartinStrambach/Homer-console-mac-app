@@ -310,6 +310,8 @@ public nonisolated struct HomerProcessQuery: Equatable, Sendable {
 	public var rootProcessId: Int?
 	public var oldestFirst: Bool
 	public var limit: Int
+	/// Rows skipped from the top: the lists always read from 0, reading every match pages on.
+	public var offset: Int
 
 	public init(
 		statuses: Set<HomerProcessStatus> = [],
@@ -319,7 +321,8 @@ public nonisolated struct HomerProcessQuery: Equatable, Sendable {
 		parentProcessId: Int? = nil,
 		rootProcessId: Int? = nil,
 		oldestFirst: Bool = false,
-		limit: Int
+		limit: Int,
+		offset: Int = 0
 	) {
 		self.statuses = statuses
 		self.rootsOnly = rootsOnly
@@ -329,10 +332,11 @@ public nonisolated struct HomerProcessQuery: Equatable, Sendable {
 		self.rootProcessId = rootProcessId
 		self.oldestFirst = oldestFirst
 		self.limit = limit
+		self.offset = offset
 	}
 
-	/// Query items in the order the console sends them, from offset 0. A refresh always re-reads
-	/// from the top, so pages loaded with "Load more" stay fresh too.
+	/// Query items in the order the console sends them. A list's refresh always re-reads from the
+	/// top (offset 0), so pages loaded with "Load more" stay fresh too.
 	var queryItems: [URLQueryItem] {
 		var items: [URLQueryItem] = []
 		let types = HomerProcessStatus.filterable.filter(statuses.contains).map(\.rawValue)
@@ -354,7 +358,7 @@ public nonisolated struct HomerProcessQuery: Equatable, Sendable {
 		items += tags.map { URLQueryItem(name: "tag", value: $0) }
 		items.append(URLQueryItem(name: "order", value: oldestFirst ? "asc" : "desc"))
 		items.append(URLQueryItem(name: "limit", value: String(limit)))
-		items.append(URLQueryItem(name: "offset", value: "0"))
+		items.append(URLQueryItem(name: "offset", value: String(offset)))
 		return items
 	}
 }

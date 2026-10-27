@@ -714,6 +714,108 @@ struct HomerInstanceReducerTests {
 		#expect(store.state.alert?.title == TextState("Could Not Kill #5"))
 	}
 
+	@Test("Kill All reads every page of the group, asks with the count of the user's own runs, then kills them")
+	func killAllConfirms() async {
+		let developer = HomerUser(username: "dev")
+		let mine = HomerProcess(id: 1, status: .working, agentName: "factory", owner: "session:dev")
+		let theirs = HomerProcess(id: 2, status: .created, agentName: "factory", owner: "session:other")
+		let mineToo = HomerProcess(id: 3, status: .created, agentName: "factory", owner: "session:dev")
+		let queries = LockIsolated<[HomerProcessQuery]>([])
+		let killed = LockIsolated<Set<Int>>([])
+		var initialState = signedInState()
+		initialState.session = .signedIn(developer)
+		initialState.isActive = true
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerClient.self].processes = { _, query in
+				guard !query.statuses.isEmpty else {
+					return HomerProcessPage(processes: [], total: 0)
+				}
+				queries.withValue { $0.append(query) }
+				// Two pages: the first answers two of three.
+				return query.offset == 0
+					? HomerProcessPage(processes: [mine, theirs], total: 3)
+					: HomerProcessPage(processes: [mineToo], total: 3)
+			}
+			$0[HomerClient.self].killProcess = { _, id in killed.withValue { _ = $0.insert(id) } }
+		}
+
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.send(.killAllTapped(.workingAndCreated)) {
+			$0.killingAll = .workingAndCreated
+		}
+		await store.receive(\.killAllListed) {
+			$0.killingAll = nil
+		}
+		#expect(queries.value.map(\.offset) == [0, 2])
+		#expect(queries.value.allSatisfy { $0.statuses == [.working, .created] && $0.oldestFirst })
+		#expect(store.state.alert?.title == TextState("Kill 2 working and created runs?"))
+		#expect(killed.value.isEmpty)
+
+		await store.send(.alert(.presented(.killAllConfirmed(.workingAndCreated, processIds: [1, 3])))) {
+			$0.alert = nil
+			$0.killingAll = .workingAndCreated
+			$0.processActionsInFlight = [1, 3]
+		}
+		await store.receive(\.killAllFinished) {
+			$0.killingAll = nil
+			$0.processActionsInFlight = []
+		}
+		await store.receive(\.processesLoaded)
+
+		#expect(killed.value == [1, 3])
+		#expect(store.state.alert == nil)
+		await store.skipInFlightEffects()
+	}
+
+	@Test("Kill All with nothing of the user's to kill says so")
+	func killAllNothingToKill() async {
+		let developer = HomerUser(username: "dev")
+		let theirs = HomerProcess(id: 2, status: .working, agentName: "factory", owner: "session:other")
+		var initialState = signedInState()
+		initialState.session = .signedIn(developer)
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [theirs], total: 1) }
+		}
+
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.send(.killAllTapped(.working))
+		await store.receive(\.killAllListed)
+
+		#expect(store.state.alert?.title == TextState("No Runs to Kill"))
+		#expect(store.state.alert?.message == TextState("There are no working runs you may kill. 1 more is not yours to kill."))
+	}
+
+	@Test("a Kill All whose kills fail says which runs, and why")
+	func killAllFails() async {
+		let runs = (1 ... 3).map { HomerProcess(id: $0, status: .created, agentName: "factory") }
+		let store = TestStore(initialState: signedInState()) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: runs, total: 3) }
+			$0[HomerClient.self].killProcess = { _, id in
+				if id == 2 {
+					throw HomerAPIError.forbidden
+				}
+			}
+		}
+
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.send(.killAllTapped(.created))
+		await store.receive(\.killAllListed)
+		await store.send(.alert(.presented(.killAllConfirmed(.created, processIds: [1, 2, 3]))))
+		await store.receive(\.killAllFinished)
+
+		#expect(store.state.killingAll == nil)
+		#expect(store.state.processActionsInFlight.isEmpty)
+		#expect(store.state.alert?.title == TextState("Could Not Kill 1 of 3 Runs"))
+		#expect(store.state.alert?.message == TextState("#2: \(HomerAPIError.forbidden.localizedDescription)"))
+	}
+
 	@Test("coming on screen counts the pending continuations for the page picker")
 	func pendingContinuationCountOnActivation() async {
 		let store = TestStore(initialState: signedInState()) {
