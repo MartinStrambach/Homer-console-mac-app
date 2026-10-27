@@ -83,10 +83,26 @@ struct HomerModelsTests {
 		#expect(process.lastCommand?.outcome == .failed)
 		#expect(process.lastCommand?.label == "test")
 
-		process.executions.append(.init(label: "notify", resultCode: 0, skipped: true))
-		#expect(process.lastCommand?.outcome == .skipped)
-
 		process.executions = []
+		#expect(process.lastCommand == nil)
+	}
+
+	@Test("commands skipped by their when: are passed over")
+	func skippedExecutions() {
+		var process = HomerProcess(
+			id: 1,
+			status: .finished,
+			agentName: "a",
+			executions: [
+				.init(label: "build", resultCode: 0),
+				.init(label: "notify", resultCode: 0, skipped: true),
+				.init(label: "cleanup", resultCode: 0, skipped: true),
+			]
+		)
+		#expect(process.lastCommand?.outcome == .succeeded)
+		#expect(process.lastCommand?.label == "build")
+
+		process.executions = [.init(label: "notify", resultCode: 0, skipped: true)]
 		#expect(process.lastCommand == nil)
 	}
 
