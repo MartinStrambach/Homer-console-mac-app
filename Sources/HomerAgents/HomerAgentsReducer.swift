@@ -49,6 +49,9 @@ public struct HomerAgentsReducer: Sendable {
 		/// The console's search: agents whose name contains it, ignoring case.
 		public var searchText = ""
 		public var scheduleFilter: ScheduleFilter = .all
+		/// The Agents page's group tab (the console's `?group=`); nil for All. A group the list no
+		/// longer has is kept but reads as All (`activeGroup`), as the console falls back.
+		public var selectedGroup: String?
 		public internal(set) var isReloading = false
 		public internal(set) var reloadResult: HomerAgentReloadResult?
 		public internal(set) var reloadError: String?
@@ -85,17 +88,50 @@ public struct HomerAgentsReducer: Sendable {
 			shownPage != nil
 		}
 
-		/// The Agents page's cards: those the search and the filter both let through.
+		/// The Agents page's cards: those the group tab, the search and the filter all let through.
 		public var filteredAgents: [HomerAgent] {
-			searchedAgents.filter(scheduleFilter.includes)
+			let group = activeGroup
+			return searchedAgents.filter { Self.isAgent($0, in: group) && scheduleFilter.includes($0) }
 		}
 
-		/// How many cards each filter would show with the current search — the filter's counts.
+		/// How many cards each filter would show in the current tab with the current search —
+		/// the filter's counts.
 		public var agentCounts: [ScheduleFilter: Int] {
-			let searched = searchedAgents
+			let group = activeGroup
+			let searched = searchedAgents.filter { Self.isAgent($0, in: group) }
 			return Dictionary(uniqueKeysWithValues: ScheduleFilter.allCases.map { filter in
 				(filter, searched.count(where: filter.includes))
 			})
+		}
+
+		/// The agents' distinct groups, sorted by name: one tab each after All. Empty when no
+		/// agent has one (or the server predates Homer 1.38), and the page shows no tabs.
+		public var groups: [String] {
+			Set(agents.compactMap(\.group)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+		}
+
+		/// The tab in effect: `selectedGroup` while some agent is still in it, else nil (All).
+		public var activeGroup: String? {
+			guard let selectedGroup, agents.contains(where: { $0.group == selectedGroup }) else {
+				return nil
+			}
+			return selectedGroup
+		}
+
+		/// How many cards each tab (nil for All) would show with the current search and filter —
+		/// the tabs' counts. An ungrouped agent counts under All only.
+		public var groupCounts: [String?: Int] {
+			let matching = searchedAgents.filter(scheduleFilter.includes)
+			var counts: [String?: Int] = [nil: matching.count]
+			for group in groups {
+				counts[group] = matching.count { $0.group == group }
+			}
+			return counts
+		}
+
+		/// Whether `agent` is under the tab for `group` (nil for All, which has every agent).
+		private static func isAgent(_ agent: HomerAgent, in group: String?) -> Bool {
+			group == nil || agent.group == group
 		}
 
 		private var searchedAgents: [HomerAgent] {

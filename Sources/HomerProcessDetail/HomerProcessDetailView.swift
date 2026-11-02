@@ -126,13 +126,16 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		.padding(.bottom, 14)
 	}
 
-	/// The agent and who started the run, then its tags and links.
+	/// The agent, its group and who started the run, then its tags and links.
 	private func subtitle(_ process: HomerProcess) -> some View {
 		HomerFlowLayout(spacing: 10) {
 			HStack(spacing: 4) {
 				Text(process.agentName)
 					.fontWeight(.semibold)
 					.textSelection(.enabled)
+				if let group = process.group {
+					HomerAgentGroupLabel(group)
+				}
 				if let owner = process.owner {
 					Text("· by \(owner)")
 						.foregroundStyle(.secondary)

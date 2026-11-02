@@ -234,10 +234,15 @@ struct HomerProcessListView: View {
 
 			TableColumn("Agent") { process in
 				VStack(alignment: .leading, spacing: 3) {
-					Text(process.agentName)
-						.scaledFont(.body)
-						.fontWeight(.medium)
-						.lineLimit(1)
+					HStack(spacing: 6) {
+						Text(process.agentName)
+							.scaledFont(.body)
+							.fontWeight(.medium)
+							.lineLimit(1)
+						if let group = process.group {
+							HomerAgentGroupLabel(group)
+						}
+					}
 					if let tags = process.tags, !tags.isEmpty {
 						HomerFlowLayout(spacing: 4) {
 							ForEach(tags, id: \.self) { tag in

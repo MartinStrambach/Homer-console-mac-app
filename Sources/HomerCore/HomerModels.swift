@@ -142,6 +142,9 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	public var id: Int
 	public var status: HomerProcessStatus
 	public var agentName: String
+	/// The agent's `group` label (Homer 1.38), read from its current definition: nil when the
+	/// agent is ungrouped, has since been removed, or the server is older.
+	public var group: String?
 	/// Who started the run, e.g. `session:admin` or a bearer token's name.
 	public var owner: String?
 	public var history: [HistoryEntry]
@@ -168,6 +171,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		id: Int,
 		status: HomerProcessStatus,
 		agentName: String,
+		group: String? = nil,
 		owner: String? = nil,
 		history: [HistoryEntry] = [],
 		executions: [Execution] = [],
@@ -185,6 +189,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		self.id = id
 		self.status = status
 		self.agentName = agentName
+		self.group = group
 		self.owner = owner
 		self.history = history
 		self.executions = executions
@@ -205,6 +210,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		id = try container.decode(Int.self, forKey: .id)
 		status = try container.decode(HomerProcessStatus.self, forKey: .status)
 		agentName = try container.decode(String.self, forKey: .agentName)
+		group = try container.decodeIfPresent(String.self, forKey: .group)
 		owner = try container.decodeIfPresent(String.self, forKey: .owner)
 		// Both are always sent today, but an absent array means "none", not a broken process.
 		history = try container.decodeIfPresent([HistoryEntry].self, forKey: .history) ?? []
@@ -222,7 +228,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case id, status, agentName, owner, history, executions, currentCommand, currentCommandStart
+		case id, status, agentName, group, owner, history, executions, currentCommand, currentCommandStart
 		case purgeAt, runner, openQuestions, costUsd, parentProcessId, rootProcessId, tags
 		case langfuseTraceUrl
 	}

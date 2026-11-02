@@ -13,6 +13,7 @@ struct HomerModelsTests {
 		      "id": 12345,
 		      "status": "WORKING",
 		      "agentName": "factory",
+		      "group": "platform",
 		      "owner": "admin",
 		      "history": [
 		        { "timestamp": 1700000000, "status": "CREATED" },
@@ -60,8 +61,10 @@ struct HomerModelsTests {
 		#expect(first.status == .working)
 		#expect(first.openQuestions == 1)
 		#expect(first.tags == ["ticket:MOB-1234"])
+		#expect(first.group == "platform")
 		#expect(first.statusDate == Date(timeIntervalSince1970: 1_700_000_100))
 		#expect(page.processes.last?.status == .unknown)
+		#expect(page.processes.last?.group == nil)
 	}
 
 	@Test("a working process reports its running command")

@@ -151,6 +151,9 @@ public nonisolated struct HomerAgent: Equatable, Sendable, Identifiable, Decodab
 	public var cron: Cron?
 	/// Whether its files can be edited — false for agents baked into the server's image.
 	public var isWritable: Bool
+	/// The definition's optional `group` label (Homer 1.38), which the Agents page has a tab
+	/// for; nil when ungrouped or from an older server.
+	public var group: String?
 
 	public init(
 		name: String,
@@ -158,7 +161,8 @@ public nonisolated struct HomerAgent: Equatable, Sendable, Identifiable, Decodab
 		inputs: [Input] = [],
 		scriptCount: Int = 1,
 		cron: Cron? = nil,
-		isWritable: Bool = true
+		isWritable: Bool = true,
+		group: String? = nil
 	) {
 		self.name = name
 		self.description = description
@@ -166,6 +170,7 @@ public nonisolated struct HomerAgent: Equatable, Sendable, Identifiable, Decodab
 		self.scriptCount = scriptCount
 		self.cron = cron
 		self.isWritable = isWritable
+		self.group = group
 	}
 
 	public init(from decoder: any Decoder) throws {
@@ -179,10 +184,11 @@ public nonisolated struct HomerAgent: Equatable, Sendable, Identifiable, Decodab
 		cron = try container.decodeIfPresent(Cron.self, forKey: .cron)
 		// The console offers Edit only when the server says so (`agent.writable && …`).
 		isWritable = try container.decodeIfPresent(Bool.self, forKey: .writable) ?? false
+		group = try container.decodeIfPresent(String.self, forKey: .group)
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case name, description, inputs, queryParams, scriptCount, cron, writable
+		case name, description, inputs, queryParams, scriptCount, cron, writable, group
 	}
 
 	public var id: String {
