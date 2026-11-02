@@ -63,6 +63,10 @@ public struct HomerInstanceReducer: Sendable {
 		/// Leaves cron-started runs out of the list. The server has no owner filter, so it hides
 		/// loaded rows rather than changing the query: `processTotal` and paging still count them.
 		public var hidesScheduledRuns = false
+		/// Whether the Agent column shows each run's group next to its agent. A preference of the
+		/// app, not of the instance: every instance shares it, and it outlives a relaunch.
+		@Shared(.homerShowsGroupLabels)
+		public internal(set) var showsGroupLabels
 		/// The agent filter's choices.
 		public internal(set) var agentNames: [String] = []
 		public internal(set) var hasLoadedProcesses = false
@@ -258,6 +262,7 @@ public struct HomerInstanceReducer: Sendable {
 		case parentFilterCleared
 		case filtersCleared
 		case sortOrderToggled
+		case groupLabelsToggled
 		case loadMoreProcessesTapped
 		case processesLoaded(Result<HomerProcessPage, any Error>)
 		case agentNamesLoaded(Result<[String], any Error>)
@@ -513,6 +518,10 @@ public struct HomerInstanceReducer: Sendable {
 			case .sortOrderToggled:
 				state.oldestFirst.toggle()
 				return refilter(&state)
+
+			case .groupLabelsToggled:
+				state.$showsGroupLabels.withLock { $0.toggle() }
+				return .none
 
 			case .loadMoreProcessesTapped:
 				state.processLimit += Self.pageSize
@@ -1432,6 +1441,13 @@ public struct HomerInstanceReducer: Sendable {
 		state.webPage = nil
 		state.processDetail = nil
 		return shownChildPage
+	}
+}
+
+nonisolated extension SharedReaderKey where Self == AppStorageKey<Bool>.Default {
+	/// Whether the process list shows each run's agent group. On unless turned off.
+	static var homerShowsGroupLabels: Self {
+		Self[.appStorage("homerShowsGroupLabels"), default: true]
 	}
 }
 

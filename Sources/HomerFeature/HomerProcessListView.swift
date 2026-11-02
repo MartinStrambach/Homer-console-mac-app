@@ -94,6 +94,13 @@ struct HomerProcessListView: View {
 					.toggleStyle(.checkbox)
 					.help("Leave out the runs a cron schedule started, and their sub-runs")
 
+				Toggle("Show group labels", isOn: Binding(
+					get: { store.showsGroupLabels },
+					set: { _ in store.send(.groupLabelsToggled) }
+				))
+				.toggleStyle(.checkbox)
+				.help("Show each run's agent group next to its agent")
+
 				Spacer()
 
 				if store.hasLoadedProcesses {
@@ -239,7 +246,7 @@ struct HomerProcessListView: View {
 							.scaledFont(.body)
 							.fontWeight(.medium)
 							.lineLimit(1)
-						if let group = process.group {
+						if store.showsGroupLabels, let group = process.group {
 							HomerAgentGroupLabel(group)
 						}
 					}

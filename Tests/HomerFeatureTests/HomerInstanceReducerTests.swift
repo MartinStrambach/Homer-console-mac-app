@@ -632,6 +632,25 @@ struct HomerInstanceReducerTests {
 		await store.skipInFlightEffects()
 	}
 
+	@Test("group labels show until turned off, for every instance, and stay off")
+	func groupLabelsToggle() async {
+		let initialState = signedInState()
+		#expect(initialState.showsGroupLabels)
+		let store = TestStore(initialState: initialState) {
+			HomerInstanceReducer()
+		}
+
+		await store.send(.groupLabelsToggled) {
+			$0.$showsGroupLabels.withLock { $0 = false }
+		}
+		// Another instance — or the next launch — reads the same preference.
+		#expect(!HomerInstanceReducer.State(baseURL: "https://other.example.com").showsGroupLabels)
+
+		await store.send(.groupLabelsToggled) {
+			$0.$showsGroupLabels.withLock { $0 = true }
+		}
+	}
+
 	@Test("killing asks first, then refreshes the list")
 	func killConfirms() async {
 		let clock = TestClock()
