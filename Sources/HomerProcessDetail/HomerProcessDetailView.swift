@@ -89,7 +89,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 
 	/// The run's icon, number and status, its agent and owner, and the actions.
 	private var header: some View {
-		HStack(alignment: .center, spacing: 14) {
+		HStack(alignment: .center, spacing: 12) {
 			HomerIconTile(
 				systemImage: store.process?.status.systemImage ?? "doc.text.magnifyingglass",
 				color: store.process?.status.color ?? .gray,
@@ -100,7 +100,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 				HStack(spacing: 8) {
 					Text("Process #\(store.processId)")
 						.scaledFont(.title2)
-						.fontWeight(.bold)
+						.fontWeight(.semibold)
 						.textSelection(.enabled)
 					if let process = store.process {
 						HomerStatusBadge(status: process.status)
@@ -123,7 +123,7 @@ package struct HomerProcessDetailView<Questions: View>: View {
 		}
 		.padding(.horizontal)
 		.padding(.top, 10)
-		.padding(.bottom, 14)
+		.padding(.bottom, 16)
 	}
 
 	/// The agent, its group and who started the run, then its tags and links.
@@ -439,7 +439,7 @@ private struct HomerTimelineStep<Content: View>: View {
 			VStack(alignment: .leading, spacing: 2) {
 				content
 			}
-			.padding(.bottom, isLast ? 0 : 14)
+			.padding(.bottom, isLast ? 0 : 16)
 		}
 		// The line runs from under this dot to the next one, the row's whole height.
 		.background(alignment: .topLeading) {

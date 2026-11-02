@@ -11,11 +11,10 @@ struct HomerAgentDebugPanel: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			HStack {
-				Text("DEBUG")
+				Text("Debug")
 					.scaledFont(.caption)
 					.fontWeight(.medium)
 					.foregroundStyle(.secondary)
-					.tracking(0.8)
 				Spacer()
 			}
 			.padding(.horizontal, 10)
@@ -92,7 +91,7 @@ struct HomerAgentDebugPanel: View {
 			.help("Debug command \(index + 1)…")
 		}
 		.padding(.horizontal, 8)
-		.padding(.vertical, 5)
+		.padding(.vertical, 4)
 		.homerCard(cornerRadius: HomerRadius.inset)
 	}
 
@@ -127,7 +126,7 @@ struct HomerAgentDebugPanel: View {
 			}
 			.scaledFont(.caption)
 			.padding(.horizontal, 10)
-			.padding(.vertical, 5)
+			.padding(.vertical, 4)
 			Divider()
 			ForEach(HomerOutputStream.allCases, id: \.self) { stream in
 				pane(stream, output: run.output(stream))
@@ -141,10 +140,9 @@ struct HomerAgentDebugPanel: View {
 	private func pane(_ stream: HomerOutputStream, output: HomerAgentDebugReducer.Output) -> some View {
 		VStack(spacing: 0) {
 			HStack(spacing: 6) {
-				Text(stream.rawValue.uppercased())
-					.scaledFont(.caption)
+				Text(stream.rawValue)
+					.scaledFont(.caption, design: .monospaced)
 					.fontWeight(.medium)
-					.tracking(0.8)
 				Spacer()
 				if output.hasEnded {
 					Text("ended")
@@ -189,7 +187,7 @@ struct HomerAgentDebugRunView: View {
 	var store: StoreOf<HomerAgentDebugRunReducer>
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 16) {
 			HStack(spacing: 6) {
 				Text("Debug Command #\(store.commandIndex + 1)")
 					.scaledFont(.title3)
@@ -200,13 +198,13 @@ struct HomerAgentDebugRunView: View {
 			// A plain stack: a handful of rows, and a lazy one's changing ideal height makes a
 			// sheet re-measure itself (README, Sheets).
 			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
+				VStack(alignment: .leading, spacing: 20) {
 					section(
 						"Query Params",
 						hint: "Values run through the agent's declared transformer and land in the command env under the matching envName."
 					) {
 						ForEach($store.params) { $row in
-							VStack(alignment: .leading, spacing: 3) {
+							VStack(alignment: .leading, spacing: 4) {
 								keyValueRow(key: $row.key, value: $row.value, keyPlaceholder: "param") {
 									store.send(.removeParamTapped(id: row.id))
 								}
@@ -270,12 +268,11 @@ struct HomerAgentDebugRunView: View {
 
 	private func section(_ title: String, hint text: String, @ViewBuilder content: () -> some View) -> some View {
 		VStack(alignment: .leading, spacing: 8) {
-			HStack(spacing: 5) {
-				Text(title.uppercased())
+			HStack(spacing: 4) {
+				Text(title)
 					.scaledFont(.caption)
 					.fontWeight(.medium)
 					.foregroundStyle(.secondary)
-					.tracking(0.8)
 				hint(text)
 			}
 			content()

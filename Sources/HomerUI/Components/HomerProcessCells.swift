@@ -30,7 +30,7 @@ package struct HomerQuestionCountBadge: View {
 				.fontWeight(.semibold)
 				.foregroundStyle(.white)
 				.padding(.horizontal, 6)
-				.padding(.vertical, 1)
+				.padding(.vertical, 2)
 				.background(.orange, in: Capsule())
 				.help("\(count) open \(count == 1 ? "question" : "questions") waiting for an answer")
 		}
@@ -54,7 +54,7 @@ package struct HomerAgentGroupLabel: View {
 			.lineLimit(1)
 			.truncationMode(.middle)
 			.padding(.horizontal, 6)
-			.padding(.vertical, 1)
+			.padding(.vertical, 2)
 			.overlay {
 				Capsule().strokeBorder(Color(nsColor: .separatorColor))
 			}

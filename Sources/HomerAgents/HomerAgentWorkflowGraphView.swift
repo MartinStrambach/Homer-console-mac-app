@@ -11,7 +11,7 @@ struct HomerAgentWorkflowGraphView: View {
 	let store: StoreOf<HomerAgentWorkflowGraphReducer>
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 16) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text("Workflow Graph: \(store.agentName)")
 					.scaledFont(.title3)

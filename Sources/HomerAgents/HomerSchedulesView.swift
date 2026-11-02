@@ -215,7 +215,7 @@ struct HomerScheduleRow: View {
 	var body: some View {
 		Group {
 			if isCompact {
-				VStack(alignment: .leading, spacing: 14) {
+				VStack(alignment: .leading, spacing: 16) {
 					identity
 					HStack(alignment: .top, spacing: 20) {
 						nextRun
@@ -244,7 +244,7 @@ struct HomerScheduleRow: View {
 				.fixedSize(horizontal: false, vertical: true)
 			}
 		}
-		.padding(14)
+		.padding(16)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.homerHoverCard()
 		.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
@@ -292,12 +292,9 @@ struct HomerScheduleRow: View {
 		HomerFlowLayout(spacing: 8) {
 			Text(cron.expression)
 				.scaledFont(.caption, design: .monospaced)
-				.fontWeight(.medium)
-				.foregroundStyle(.purple)
-				.padding(.horizontal, 7)
+				.padding(.horizontal, 8)
 				.padding(.vertical, 2)
-				.background(Color.purple.opacity(0.12), in: Capsule())
-				.overlay(Capsule().strokeBorder(Color.purple.opacity(0.25)))
+				.background(.fill.tertiary, in: Capsule())
 				.textSelection(.enabled)
 				.help("The cron expression")
 			if let summary = cron.summary {
@@ -320,13 +317,13 @@ struct HomerScheduleRow: View {
 			columnTitle("Next run", systemImage: "clock")
 			if let nextRunAt = cron.nextRunAt {
 				TimelineView(.periodic(from: .now, by: 1)) { context in
-					VStack(alignment: .leading, spacing: 5) {
+					VStack(alignment: .leading, spacing: 4) {
 						Text(HomerFormat.timeUntil(nextRunAt, now: context.date))
 							.scaledFont(.body)
 							.fontWeight(.semibold)
 							.monospacedDigit()
 							// Soon: within ten minutes.
-							.foregroundStyle(nextRunAt - context.date.timeIntervalSince1970 < 600 ? Color.purple : .primary)
+							.foregroundStyle(nextRunAt - context.date.timeIntervalSince1970 < 600 ? Color.accentColor : .primary)
 						if let progress = cron.progress(at: context.date) {
 							HomerScheduleProgressBar(progress: progress)
 								.help("\(Int(progress * 100)) % of the way from the last run to the next")
@@ -448,7 +445,7 @@ private struct HomerScheduleProgressBar: View {
 			.overlay(alignment: .leading) {
 				GeometryReader { proxy in
 					Capsule()
-						.fill(Color.purple.gradient)
+						.fill(Color.accentColor)
 						.frame(width: max(4, proxy.size.width * progress))
 				}
 			}

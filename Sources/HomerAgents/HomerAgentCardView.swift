@@ -73,7 +73,6 @@ struct HomerAgentCard: View {
 			.fixedSize(horizontal: false, vertical: true)
 			.homerHoverCard()
 			.shadow(color: .black.opacity(isExpanded ? 0.18 : 0), radius: 16, y: 6)
-			.scaleEffect(isExpanded ? 1.03 : 1, anchor: expandsUpward ? .bottom : .top)
 			.contentShape(RoundedRectangle(cornerRadius: HomerRadius.card, style: .continuous))
 			.onHover { isHovered = $0 }
 			// The whole card opens the agent; its own buttons (graph, Edit, Run, the last run) still
@@ -130,8 +129,8 @@ struct HomerAgentCard: View {
 				parameters
 			}
 		}
-		.padding(.horizontal, 12)
-		.padding(.vertical, 14)
+		.padding(.horizontal, 16)
+		.padding(.vertical, 16)
 		.frame(maxWidth: .infinity, minHeight: Self.collapsedMinHeight, alignment: .topLeading)
 	}
 
@@ -166,7 +165,6 @@ struct HomerAgentCard: View {
 				.lineLimit(1)
 			} icon: {
 				Image(systemName: "clock")
-					.foregroundStyle(.purple)
 			}
 			.scaledFont(.caption)
 			.foregroundStyle(.secondary)
@@ -232,7 +230,7 @@ struct HomerAgentCard: View {
 
 	/// The expression and timezone, then the next and last runs side by side.
 	private func cronBlock(_ cron: HomerAgent.Cron) -> some View {
-		VStack(alignment: .leading, spacing: 3) {
+		VStack(alignment: .leading, spacing: 4) {
 			Label {
 				HStack(spacing: 4) {
 					Text(cron.expression)
@@ -245,7 +243,6 @@ struct HomerAgentCard: View {
 				}
 			} icon: {
 				Image(systemName: "clock")
-					.foregroundStyle(.purple)
 			}
 			if cron.nextRunAt != nil || cron.lastRunAt != nil {
 				HomerFlowLayout(spacing: 12) {
@@ -287,7 +284,7 @@ struct HomerAgentCard: View {
 		.padding(.horizontal, 8)
 		.padding(.vertical, 6)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.homerInset(tint: .purple)
+		.homerInset()
 	}
 
 	/// The parameters as chips — a required one marked — with type, variable and transformer
@@ -308,7 +305,7 @@ struct HomerAgentCard: View {
 						}
 					}
 					.padding(.horizontal, 8)
-					.padding(.vertical, 3)
+					.padding(.vertical, 4)
 					.background(.fill.tertiary, in: Capsule())
 					.help(
 						"\(input.type)\(input.required ? ", required" : "") · Env: \(input.envName) · \(input.transformer.summary)"
@@ -392,7 +389,7 @@ struct HomerAgentInputDetails: View {
 	let input: HomerAgent.Input
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 1) {
+		VStack(alignment: .leading, spacing: 2) {
 			Text("Env: \(input.envName)")
 			Text(input.transformer.summary)
 		}
@@ -413,7 +410,7 @@ struct HomerAgentBadge: View {
 			.fontWeight(.medium)
 			.foregroundStyle(tint ?? Color.primary)
 			.padding(.horizontal, 6)
-			.padding(.vertical, 1)
+			.padding(.vertical, 2)
 			.background((tint ?? Color.secondary).opacity(0.15), in: Capsule())
 	}
 }

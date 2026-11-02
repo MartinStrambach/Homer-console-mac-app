@@ -179,7 +179,7 @@ struct HomerClaudeTranscriptView: View {
 		switch item {
 		case let .message(_, text):
 			if isLastMessage {
-				VStack(alignment: .leading, spacing: 3) {
+				VStack(alignment: .leading, spacing: 4) {
 					Text("Claude")
 						.scaledFont(.caption)
 						.fontWeight(.medium)
@@ -209,13 +209,13 @@ struct HomerClaudeTranscriptView: View {
 				isRunning: isLive && tool.id == transcript.inflightToolID
 			) {
 				VStack(alignment: .leading, spacing: 8) {
-					VStack(alignment: .leading, spacing: 3) {
+					VStack(alignment: .leading, spacing: 4) {
 						caption("Input")
 						blockText(tool.input, color: .primary)
 					}
 					if let result = tool.result {
 						Divider()
-						VStack(alignment: .leading, spacing: 3) {
+						VStack(alignment: .leading, spacing: 4) {
 							caption("Result")
 							blockText(result, color: .green)
 						}

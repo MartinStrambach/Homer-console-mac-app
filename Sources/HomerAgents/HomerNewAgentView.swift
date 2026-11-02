@@ -8,7 +8,7 @@ struct HomerNewAgentView: View {
 	var store: StoreOf<HomerNewAgentReducer>
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 16) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text("Create Agent")
 					.scaledFont(.title3)
