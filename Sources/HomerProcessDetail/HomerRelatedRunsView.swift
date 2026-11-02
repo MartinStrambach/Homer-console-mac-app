@@ -103,6 +103,9 @@ struct HomerRelatedRunsSection: View {
 					Text(run.agentName)
 						.fontWeight(.medium)
 						.textSelection(.enabled)
+					if let group = run.group {
+						HomerAgentGroupLabel(group)
+					}
 					HomerStatusBadge(status: run.status)
 					HomerQuestionCountBadge(count: run.openQuestions ?? 0)
 					extra(run)

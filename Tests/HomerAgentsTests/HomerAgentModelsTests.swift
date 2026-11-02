@@ -34,7 +34,8 @@ struct HomerAgentModelsTests {
 		        "lastRunAt": 1759900000,
 		        "lastRunProcessId": 812
 		      },
-		      "writable": true
+		      "writable": true,
+		      "group": "platform"
 		    },
 		    {
 		      "name": "legacy",
@@ -43,7 +44,8 @@ struct HomerAgentModelsTests {
 		      "queryParams": [ { "paramName": "q" } ],
 		      "scriptCount": 1,
 		      "cron": null,
-		      "writable": false
+		      "writable": false,
+		      "group": null
 		    },
 		    {
 		      "name": "older-server",
@@ -64,6 +66,7 @@ struct HomerAgentModelsTests {
 		#expect(factory.description == "Builds a feature from a YouTrack ticket")
 		#expect(factory.scriptCount == 4)
 		#expect(factory.isWritable)
+		#expect(factory.group == "platform")
 		#expect(factory.cron == HomerAgent.Cron(
 			expression: "0 3 * * 1-5",
 			timezone: "Europe/Prague",
@@ -93,12 +96,14 @@ struct HomerAgentModelsTests {
 		#expect(legacy.description == nil)
 		#expect(legacy.cron == nil)
 		#expect(!legacy.isWritable)
+		#expect(legacy.group == nil)
 		#expect(legacy.inputs == [HomerAgent.Input(paramName: "q", envName: "q", source: .query, type: "STRING", required: true)])
 
-		// No `writable` (a server older than the field) and a source the app does not know: not
-		// editable, and the input is kept but neither shown nor sent.
+		// No `writable` or `group` (a server older than the fields) and a source the app does not
+		// know: not editable, ungrouped, and the input is kept but neither shown nor sent.
 		let older = agents[2]
 		#expect(!older.isWritable)
+		#expect(older.group == nil)
 		#expect(older.inputs.map(\.source) == [.unknown])
 		#expect(older.queryInputs.isEmpty)
 	}

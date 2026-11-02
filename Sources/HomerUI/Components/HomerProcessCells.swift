@@ -37,6 +37,31 @@ package struct HomerQuestionCountBadge: View {
 	}
 }
 
+/// An agent's `group` beside its name — outlined rather than filled, so it does not read as one
+/// of the run's tags.
+package struct HomerAgentGroupLabel: View {
+	let group: String
+
+	package init(_ group: String) {
+		self.group = group
+	}
+
+	package var body: some View {
+		Label(group, systemImage: "folder")
+			.labelStyle(.titleAndIcon)
+			.scaledFont(.caption2)
+			.foregroundStyle(.secondary)
+			.lineLimit(1)
+			.truncationMode(.middle)
+			.padding(.horizontal, 6)
+			.padding(.vertical, 1)
+			.overlay {
+				Capsule().strokeBorder(Color(nsColor: .separatorColor))
+			}
+			.help("Agent group \(group)")
+	}
+}
+
 package struct HomerLastCommandView: View {
 	let process: HomerProcess
 

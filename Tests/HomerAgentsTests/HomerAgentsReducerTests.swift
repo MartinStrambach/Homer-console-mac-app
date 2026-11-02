@@ -136,6 +136,52 @@ struct HomerAgentsReducerTests {
 		#expect(state.agentCounts == [.all: 1, .scheduled: 1, .unscheduled: 0])
 	}
 
+	@Test("the group tabs: one per group sorted by name, ungrouped agents under All only")
+	func groupTabs() {
+		var state = loadedState()
+		#expect(state.groups.isEmpty)
+
+		let deploy = HomerAgent(name: "deploy", group: "platform")
+		let review = HomerAgent(name: "review", group: "ai")
+		let rollback = HomerAgent(
+			name: "rollback",
+			cron: HomerAgent.Cron(expression: "0 4 * * *", timezone: "UTC"),
+			group: "platform"
+		)
+		state.agents = [deploy, factory, nightly, review, rollback]
+		#expect(state.groups == ["ai", "platform"])
+		#expect(state.groupCounts == [nil: 5, "ai": 1, "platform": 2])
+
+		state.selectedGroup = "platform"
+		#expect(state.filteredAgents == [deploy, rollback])
+		#expect(state.agentCounts == [.all: 2, .scheduled: 1, .unscheduled: 1])
+
+		// The search and the filter apply within the tab, and the tabs count under both.
+		state.scheduleFilter = .scheduled
+		#expect(state.filteredAgents == [rollback])
+		#expect(state.groupCounts == [nil: 2, "ai": 0, "platform": 1])
+		state.scheduleFilter = .all
+		state.searchText = "DEP"
+		#expect(state.filteredAgents == [deploy])
+		#expect(state.groupCounts == [nil: 1, "ai": 0, "platform": 1])
+	}
+
+	@Test("a group the list no longer has reads as All, and comes back with its agents")
+	func vanishedGroup() {
+		var state = loadedState()
+		let deploy = HomerAgent(name: "deploy", group: "platform")
+		state.agents = [deploy, factory]
+		state.selectedGroup = "platform"
+		#expect(state.filteredAgents == [deploy])
+
+		state.agents = [factory]
+		#expect(state.activeGroup == nil)
+		#expect(state.filteredAgents == [factory])
+
+		state.agents = [deploy, factory]
+		#expect(state.activeGroup == "platform")
+	}
+
 	@Test("Reload shows what changed and reads the list again")
 	func reload() async {
 		let clock = TestClock()

@@ -4,8 +4,9 @@ import HomerCore
 import HomerUI
 import SwiftUI
 
-/// The Agents page of the selected instance (the console's `agents/page.tsx`): a search (⌘F)
-/// and a scheduled / not scheduled filter over the agents' cards, Reload for admins, and Run.
+/// The Agents page of the selected instance (the console's `agents/page.tsx`): a search (⌘F),
+/// a scheduled / not scheduled filter and the group tabs over the agents' cards, Reload for
+/// admins, and Run.
 /// `user` decides what it offers (Run, Edit, New Agent, Reload, by the user's grants); the
 /// server checks every call again.
 package struct HomerAgentsView: View {
@@ -51,6 +52,9 @@ package struct HomerAgentsView: View {
 	private var agents: some View {
 		VStack(spacing: 0) {
 			toolbar
+			if !store.groups.isEmpty {
+				groupTabs
+			}
 			Divider()
 			if let error = store.loadError {
 				HomerErrorBanner(message: error)
@@ -145,6 +149,49 @@ package struct HomerAgentsView: View {
 		.padding(.vertical, 8)
 	}
 
+	/// The console's group tabs: All, then one per agent group, each with how many cards it would
+	/// show under the search and the filter. Wrapping, as the console's do, for a factory with many.
+	private var groupTabs: some View {
+		let counts = store.groupCounts
+		let active = store.activeGroup
+		return HomerFlowLayout(spacing: 6) {
+			groupTab(title: "All", group: nil, count: counts[nil, default: 0], isSelected: active == nil)
+				.help("Every agent, those without a group included")
+			ForEach(store.groups, id: \.self) { group in
+				groupTab(title: group, group: group, count: counts[group, default: 0], isSelected: active == group)
+					.help("Only the agents in the group \(group)")
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal)
+		.padding(.bottom, 8)
+	}
+
+	private func groupTab(title: String, group: String?, count: Int, isSelected: Bool) -> some View {
+		Button {
+			store.send(.binding(.set(\.selectedGroup, group)))
+		} label: {
+			HStack(spacing: 4) {
+				Text(title)
+					.lineLimit(1)
+				Text("\(count)")
+					.foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+					.monospacedDigit()
+			}
+			.scaledFont(.callout)
+			.fontWeight(isSelected ? .semibold : .regular)
+			.padding(.horizontal, 10)
+			.padding(.vertical, 3)
+			.background {
+				Capsule()
+					.fill(isSelected ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.fill.quaternary))
+			}
+			.contentShape(Capsule())
+		}
+		.buttonStyle(.plain)
+		.accessibilityAddTraits(isSelected ? .isSelected : [])
+	}
+
 	@ViewBuilder
 	private var content: some View {
 		if !store.hasLoaded {
@@ -187,12 +234,13 @@ package struct HomerAgentsView: View {
 	}
 
 	private var emptyDescription: String {
-		switch (store.searchText.isEmpty, store.scheduleFilter) {
+		let inGroup = store.activeGroup.map { " in \($0)" } ?? ""
+		return switch (store.searchText.isEmpty, store.scheduleFilter) {
 		case (true, .all): "No agents available."
-		case (true, .scheduled): "No agent runs on a cron."
-		case (true, .unscheduled): "Every agent runs on a cron."
-		case (false, .all): "No agents match your search."
-		case (false, _): "No agents match your search and filter."
+		case (true, .scheduled): "No agent\(inGroup) runs on a cron."
+		case (true, .unscheduled): "Every agent\(inGroup) runs on a cron."
+		case (false, .all): "No agents\(inGroup) match your search."
+		case (false, _): "No agents\(inGroup) match your search and filter."
 		}
 	}
 }
