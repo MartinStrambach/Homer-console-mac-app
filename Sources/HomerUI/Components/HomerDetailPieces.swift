@@ -23,14 +23,13 @@ package struct HomerIconTile: View {
 	package var body: some View {
 		let side = size * scale
 		RoundedRectangle(cornerRadius: side * 0.26, style: .continuous)
-			.fill(color.gradient)
+			.fill(color)
 			.frame(width: side, height: side)
 			.overlay {
 				Image(systemName: systemImage)
 					.font(.system(size: side * 0.45, weight: .semibold))
 					.foregroundStyle(.white)
 			}
-			.shadow(color: color.opacity(0.3), radius: 4, y: 2)
 			.accessibilityHidden(true)
 	}
 }
@@ -60,8 +59,8 @@ package struct HomerStat<Value: View>: View {
 				.lineLimit(1)
 				.minimumScaleFactor(0.8)
 		}
-		.padding(.horizontal, 14)
-		.padding(.vertical, 10)
+		.padding(.horizontal, 16)
+		.padding(.vertical, 12)
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 		.homerCard()
 		.accessibilityElement(children: .combine)
@@ -151,7 +150,8 @@ package struct HomerGridRow<Value: View>: View {
 	}
 }
 
-/// A card that lifts under the pointer: an agent in the grid, anything the user opens.
+/// A card whose edge takes the accent under the pointer: an agent in the grid, anything the user
+/// opens.
 private struct HomerHoverCard: ViewModifier {
 	@State
 	private var isHovered = false
@@ -159,15 +159,13 @@ private struct HomerHoverCard: ViewModifier {
 	func body(content: Content) -> some View {
 		content
 			.homerCard(highlight: isHovered ? Color.accentColor : nil)
-			.shadow(color: .black.opacity(isHovered ? 0.1 : 0), radius: 10, y: 4)
-			.offset(y: isHovered ? -1 : 0)
-			.animation(.snappy(duration: 0.2), value: isHovered)
+			.animation(.easeOut(duration: 0.15), value: isHovered)
 			.onHover { isHovered = $0 }
 	}
 }
 
 package extension View {
-	/// `homerCard()` that lifts and tints its edge under the pointer.
+	/// `homerCard()` that tints its edge under the pointer.
 	func homerHoverCard() -> some View {
 		modifier(HomerHoverCard())
 	}

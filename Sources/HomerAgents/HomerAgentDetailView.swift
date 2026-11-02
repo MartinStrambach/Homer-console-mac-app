@@ -76,8 +76,8 @@ struct HomerAgentDetailView: View {
 	/// The agent's icon, name, description and schedule with Edit and Run; its figures; and the
 	/// section picker.
 	private func header(_ agent: HomerAgent) -> some View {
-		VStack(alignment: .leading, spacing: 14) {
-			HStack(alignment: .top, spacing: 14) {
+		VStack(alignment: .leading, spacing: 16) {
+			HStack(alignment: .top, spacing: 12) {
 				HomerIconTile(
 					systemImage: agent.cron == nil ? "square.stack.3d.up.fill" : "calendar.badge.clock",
 					color: agent.cron == nil ? .accentColor : .purple,
@@ -88,7 +88,7 @@ struct HomerAgentDetailView: View {
 					HStack(alignment: .firstTextBaseline, spacing: 8) {
 						Text(agent.name)
 							.scaledFont(.title2)
-							.fontWeight(.bold)
+							.fontWeight(.semibold)
 							.textSelection(.enabled)
 						if agent.cron != nil {
 							HomerPill("Scheduled", color: .purple, systemImage: "clock")

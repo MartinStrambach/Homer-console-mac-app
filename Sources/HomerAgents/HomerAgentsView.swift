@@ -95,7 +95,7 @@ package struct HomerAgentsView: View {
 				}
 			}
 			.padding(.horizontal, 10)
-			.padding(.vertical, 5)
+			.padding(.vertical, 6)
 			.background(.fill.tertiary, in: Capsule())
 			.frame(maxWidth: 360)
 			.help("Search agents by name (⌘F); Esc clears")
@@ -181,7 +181,7 @@ package struct HomerAgentsView: View {
 			.scaledFont(.callout)
 			.fontWeight(isSelected ? .semibold : .regular)
 			.padding(.horizontal, 10)
-			.padding(.vertical, 3)
+			.padding(.vertical, 4)
 			.background {
 				Capsule()
 					.fill(isSelected ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.fill.quaternary))

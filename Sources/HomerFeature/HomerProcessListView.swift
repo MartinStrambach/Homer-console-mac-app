@@ -143,15 +143,15 @@ struct HomerProcessListView: View {
 		return Button {
 			store.send(.statusFilterToggled(status))
 		} label: {
-			HStack(spacing: 5) {
+			HStack(spacing: 4) {
 				Circle()
 					.fill(isOn ? Color.white : status.color)
 					.frame(width: 6, height: 6)
 				Text(status.title)
 			}
 			.scaledFont(.caption)
-			.fontWeight(.semibold)
-			.padding(.horizontal, 9)
+			.fontWeight(.medium)
+			.padding(.horizontal, 8)
 			.padding(.vertical, 4)
 			.foregroundStyle(isOn ? Color.white : Color.primary)
 			.background {
@@ -180,7 +180,7 @@ struct HomerProcessListView: View {
 			.buttonStyle(.plain)
 			.help("Remove this filter")
 		}
-		.padding(.horizontal, 9)
+		.padding(.horizontal, 8)
 		.padding(.vertical, 4)
 		.foregroundStyle(Color.accentColor)
 		.background(Color.accentColor.opacity(0.14), in: Capsule())
@@ -233,7 +233,7 @@ struct HomerProcessListView: View {
 			.width(min: 56, ideal: 70, max: 100)
 
 			TableColumn("Agent") { process in
-				VStack(alignment: .leading, spacing: 3) {
+				VStack(alignment: .leading, spacing: 4) {
 					HStack(spacing: 6) {
 						Text(process.agentName)
 							.scaledFont(.body)

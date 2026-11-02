@@ -65,7 +65,7 @@ struct HomerAgentEditorView: View {
 			.keyboardShortcut("[", modifiers: .command)
 			.help("Back to \(backTitle) (⌘[)")
 
-			HStack(spacing: 5) {
+			HStack(spacing: 4) {
 				Text("Editing")
 				Text(store.agentName)
 					.scaledFont(.title3, design: .monospaced)
@@ -126,7 +126,7 @@ struct HomerAgentEditorView: View {
 		}
 		if let errors = store.schemaErrors {
 			HomerAgentDismissableBanner(tint: .red, onDismiss: { store.send(.schemaErrorsDismissed) }) {
-				VStack(alignment: .leading, spacing: 3) {
+				VStack(alignment: .leading, spacing: 4) {
 					Text("Schema validation failed:")
 						.fontWeight(.medium)
 					ForEach(Array(errors.enumerated()), id: \.offset) { _, error in
@@ -222,11 +222,10 @@ private struct HomerAgentFileTree: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			HStack {
-				Text("FILES")
+				Text("Files")
 					.scaledFont(.caption)
 					.fontWeight(.medium)
 					.foregroundStyle(.secondary)
-					.tracking(0.8)
 				if store.isLoadingFiles, store.files != nil {
 					ProgressView()
 						.controlSize(.mini)

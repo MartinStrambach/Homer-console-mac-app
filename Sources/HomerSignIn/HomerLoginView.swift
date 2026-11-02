@@ -54,7 +54,7 @@ package struct HomerLoginView: View {
 					.homerInset(tint: .orange)
 				}
 
-				VStack(alignment: .leading, spacing: 14) {
+				VStack(alignment: .leading, spacing: 16) {
 					endpointField
 
 					labeledField("Username") {
@@ -105,7 +105,6 @@ package struct HomerLoginView: View {
 			.padding(28)
 			.frame(maxWidth: 440)
 			.homerCard(cornerRadius: 20)
-			.shadow(color: .black.opacity(0.08), radius: 24, y: 8)
 			.padding(40)
 			.frame(maxWidth: .infinity)
 		}

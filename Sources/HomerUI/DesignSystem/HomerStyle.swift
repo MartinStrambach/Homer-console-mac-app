@@ -75,8 +75,8 @@ package struct HomerPill: View {
 				.lineLimit(1)
 		}
 		.scaledFont(.caption)
-		.fontWeight(.semibold)
-		.padding(.horizontal, 7)
+		.fontWeight(.medium)
+		.padding(.horizontal, 8)
 		.padding(.vertical, 2)
 		.background(color.opacity(0.14), in: Capsule())
 		.overlay(Capsule().strokeBorder(color.opacity(0.3)))
@@ -99,7 +99,7 @@ package struct HomerChip: View {
 			.lineLimit(1)
 			.truncationMode(.middle)
 			.padding(.horizontal, 6)
-			.padding(.vertical, 1)
+			.padding(.vertical, 2)
 			.background(.fill.tertiary, in: Capsule())
 	}
 }

@@ -439,7 +439,7 @@ private struct HomerCostBar: View {
 			.overlay(alignment: .leading) {
 				GeometryReader { proxy in
 					Capsule()
-						.fill(color.gradient)
+						.fill(color)
 						.frame(width: max(fraction > 0 ? height : 0, proxy.size.width * fraction))
 				}
 			}

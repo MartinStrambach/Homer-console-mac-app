@@ -14,7 +14,7 @@ struct HomerRunAgentView: View {
 	private var copied = false
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		VStack(alignment: .leading, spacing: 16) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text("Run Agent: \(store.agent.name)")
 					.scaledFont(.title3)
@@ -121,7 +121,7 @@ struct HomerRunAgentView: View {
 
 	private func field(_ input: HomerAgent.Input) -> some View {
 		let error = store.errors[input.paramName]
-		return VStack(alignment: .leading, spacing: 5) {
+		return VStack(alignment: .leading, spacing: 4) {
 			HomerAgentInputHeader(input: input)
 			TextField(
 				"Enter \(input.paramName)",
@@ -174,7 +174,7 @@ struct HomerRunAgentView: View {
 				NSPasteboard.general.setString(store.curlCommand, forType: .string)
 				copied = true
 			} label: {
-				Label(copied ? "Copied!" : "Copy to Clipboard", systemImage: "doc.on.doc")
+				Label(copied ? "Copied" : "Copy to Clipboard", systemImage: "doc.on.doc")
 					.frame(maxWidth: .infinity)
 			}
 			.buttonStyle(.scaledBordered)
