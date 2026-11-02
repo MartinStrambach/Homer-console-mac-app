@@ -252,6 +252,10 @@ struct HomerProcessListView: View {
 					}
 				}
 				.padding(.vertical, 2)
+				// Fill the column: a row without tags otherwise hugs its content, and a reused cell
+				// kept the previous row's width — the name sat off the others' edge and the group
+				// was cut short with room to spare.
+				.frame(maxWidth: .infinity, alignment: .leading)
 			}
 			.width(min: 140, ideal: 220)
 
