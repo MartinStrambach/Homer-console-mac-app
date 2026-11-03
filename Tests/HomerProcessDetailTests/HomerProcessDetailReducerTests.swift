@@ -38,6 +38,10 @@ struct HomerProcessDetailReducerTests {
 				#expect(query == HomerProcessQuery(rootProcessId: 7, oldestFirst: true, limit: 500))
 				return flow
 			}
+			$0[HomerProcessDetailClient.self].runMessages = { _, id in
+				#expect(id == 7)
+				return []
+			}
 		}
 
 		await store.send(.shown) {
@@ -49,6 +53,10 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.relatedRunsLoaded) {
 			$0.relatedRuns = flow
 		}
+		await store.receive(\.messagesLoaded) {
+			$0.messages = []
+		}
+		// An ended run's empty inbox is read once.
 		await clock.advance(by: .seconds(5))
 		await store.receive(\.processLoaded)
 		await store.receive(\.relatedRunsLoaded)
@@ -74,6 +82,7 @@ struct HomerProcessDetailReducerTests {
 				}
 				return children
 			}
+			$0[HomerProcessDetailClient.self].runMessages = { _, _ in [] }
 		}
 
 		await store.send(.shown) {
@@ -85,10 +94,15 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.relatedRunsLoaded) {
 			$0.relatedRuns = children
 		}
+		await store.receive(\.messagesLoaded) {
+			$0.messages = []
+		}
 		#expect(!store.state.isFlowRoot)
+		// A working run's inbox is read on every poll.
 		await clock.advance(by: .seconds(5))
 		await store.receive(\.processLoaded)
 		await store.receive(\.relatedRunsLoaded)
+		await store.receive(\.messagesLoaded)
 		#expect(store.state.relatedRuns == children)
 		await store.skipInFlightEffects()
 	}
@@ -271,6 +285,7 @@ struct HomerProcessDetailReducerTests {
 			}
 			$0[HomerProcessDetailClient.self].process = { _, id in id == 8 ? retried : finished }
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
+			$0[HomerProcessDetailClient.self].runMessages = { _, _ in [] }
 		}
 
 		await store.send(.retryTapped) {
@@ -290,11 +305,15 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.relatedRunsLoaded) {
 			$0.relatedRuns = HomerProcessPage(processes: [], total: 0)
 		}
+		await store.receive(\.messagesLoaded) {
+			$0.messages = []
+		}
 		await store.send(.backTapped) {
 			$0.backStack = []
 			$0.processId = 7
 			$0.process = nil
 			$0.relatedRuns = nil
+			$0.messages = nil
 		}
 		await store.receive(\.processLoaded) {
 			$0.process = finished
@@ -302,7 +321,103 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.relatedRunsLoaded) {
 			$0.relatedRuns = HomerProcessPage(processes: [], total: 0)
 		}
+		await store.receive(\.messagesLoaded) {
+			$0.messages = []
+		}
 		await store.skipInFlightEffects()
+	}
+
+	@Test("a message to a working run is sent trimmed and shows queued at once")
+	func sendsMessage() async {
+		let running = HomerProcess(id: 7, status: .working, agentName: "factory")
+		let queued = HomerRunMessage(id: "m1", processId: 7, text: "use the staging DB", status: .queued, sender: "session:admin", createdAt: 1_700_000_000)
+		var initialState = state(running)
+		initialState.messages = []
+		initialState.messageDraft = "  use the staging DB\n"
+		let store = TestStore(initialState: initialState) {
+			HomerProcessDetailReducer()
+		} withDependencies: {
+			$0[HomerProcessDetailClient.self].sendRunMessage = { baseURL, id, text in
+				#expect(baseURL == Self.baseURL)
+				#expect(id == 7)
+				#expect(text == "use the staging DB")
+				return queued
+			}
+		}
+
+		#expect(store.state.canSendMessage)
+		await store.send(.sendMessageTapped) {
+			$0.isSendingMessage = true
+		}
+		await store.receive(\.messageSent) {
+			$0.isSendingMessage = false
+			$0.messageDraft = ""
+			$0.messages = [queued]
+		}
+		// A blank draft sends nothing.
+		await store.send(.sendMessageTapped)
+	}
+
+	@Test("a refused message keeps its draft and says why in the server's words")
+	func refusedMessage() async {
+		let running = HomerProcess(id: 7, status: .working, agentName: "factory")
+		var initialState = state(running)
+		initialState.messages = []
+		initialState.messageDraft = "stop"
+		let store = TestStore(initialState: initialState) {
+			HomerProcessDetailReducer()
+		} withDependencies: {
+			$0[HomerProcessDetailClient.self].sendRunMessage = { _, _, _ in
+				throw HomerAPIError.server(status: 409, message: "Process 7 has already ended")
+			}
+		}
+
+		await store.send(.sendMessageTapped) {
+			$0.isSendingMessage = true
+		}
+		await store.receive(\.messageSent) {
+			$0.isSendingMessage = false
+			$0.messageError = "Process 7 has already ended"
+		}
+	}
+
+	@Test("the box is offered to who may control a run that has not ended, on a server with an inbox")
+	func messageBoxOffered() {
+		let running = HomerProcess(id: 7, status: .working, agentName: "factory", owner: "cron")
+		var page = state(running)
+		// A server without an inbox: no section at all.
+		#expect(!page.canSendMessage)
+		#expect(!page.showsMessages)
+
+		page.messages = []
+		#expect(page.canSendMessage)
+		#expect(page.showsMessages)
+
+		let viewer = HomerUser(username: "viewer", grants: [.init(agents: ["*"], actions: ["read"])])
+		var viewersPage = state(running, user: viewer)
+		viewersPage.messages = []
+		#expect(!viewersPage.canSendMessage)
+		#expect(!viewersPage.showsMessages)
+		viewersPage.messages = [HomerRunMessage(id: "m1", processId: 7, text: "hi", status: .delivered, createdAt: 1)]
+		#expect(viewersPage.showsMessages)
+
+		var ended = state(HomerProcess(id: 7, status: .finished, agentName: "factory"))
+		ended.messages = []
+		#expect(!ended.canSendMessage)
+		#expect(!ended.showsMessages)
+	}
+
+	@Test("the inbox is read until the run has ended and nothing waits in it")
+	func inboxSettles() {
+		let working = HomerProcess(id: 7, status: .working, agentName: "factory")
+		let finished = HomerProcess(id: 7, status: .finished, agentName: "factory")
+		let queued = HomerRunMessage(id: "m1", processId: 7, text: "hi", status: .queued, createdAt: 1)
+		let undelivered = HomerRunMessage(id: "m1", processId: 7, text: "hi", status: .undelivered, createdAt: 1)
+
+		#expect(!HomerProcessDetailReducer.inboxIsSettled([], run: working))
+		#expect(!HomerProcessDetailReducer.inboxIsSettled([queued], run: finished))
+		#expect(HomerProcessDetailReducer.inboxIsSettled([undelivered], run: finished))
+		#expect(HomerProcessDetailReducer.inboxIsSettled(nil, run: working))
 	}
 
 	@Test("an answer for a run no longer on the page is dropped")

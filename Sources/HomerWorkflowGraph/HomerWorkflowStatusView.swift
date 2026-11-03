@@ -259,38 +259,3 @@ struct HomerWorkflowStateDot: View {
 		}
 	}
 }
-
-/// One small square per command of a sub run, colored by how it went — the newest last.
-struct HomerCommandDots: View {
-	let states: [String]
-	var labels: [String]?
-
-	/// Beyond this the oldest are dropped: the newest and the running ones say the most.
-	private static let limit = 40
-
-	var body: some View {
-		let shown = Array(states.enumerated().suffix(Self.limit))
-		HStack(spacing: 2) {
-			ForEach(shown, id: \.offset) { index, state in
-				RoundedRectangle(cornerRadius: 1.5)
-					.fill(Self.color(state))
-					.frame(width: 7, height: 7)
-					.opacity(state == "running" ? 0.6 : 1)
-					.help(labels.map { "\($0[index]): \(state)" } ?? state)
-			}
-		}
-	}
-
-	static func color(_ state: String) -> Color {
-		switch state {
-		case "ok":
-			.green
-		case "failed":
-			.red
-		case "running":
-			.blue
-		default:
-			.gray
-		}
-	}
-}
