@@ -5,7 +5,7 @@ import SwiftUI
 
 /// The console's Costs page (`app/(dashboard)/costs/page.tsx`, `components/costs/*`): the
 /// global spend of the last minute and each agent's of the last day against their caps, then the
-/// ledger's per-agent spend for a month and of all time.
+/// ledger's per-agent spend for a month and of all time, and the spend per value of a tracked tag.
 package struct HomerCostsView: View {
 	let store: StoreOf<HomerCostsReducer>
 
@@ -44,6 +44,9 @@ package struct HomerCostsView: View {
 						else {
 							monthlyCosts
 							totalCosts
+						}
+						if !store.tagKeys.isEmpty {
+							tagCosts
 						}
 					}
 					.padding()
@@ -233,6 +236,49 @@ package struct HomerCostsView: View {
 			}
 			else {
 				HomerCostPlaceholder(failed: store.monthlyError != nil)
+			}
+		}
+	}
+
+	/// The console's `CostByTagCard`: one tracked tag key at a time, its values biggest first.
+	private var tagCosts: some View {
+		HomerCostCard("Cost by tag") {
+			HStack(spacing: 8) {
+				if store.tagCosts != nil, !store.isTagCostsCurrent, store.tagCostsError == nil {
+					ProgressView()
+						.controlSize(.small)
+				}
+				Picker("Tag key", selection: Binding(
+					get: { store.shownTagKey ?? "" },
+					set: { store.send(.tagKeySelected($0)) }
+				)) {
+					ForEach(store.tagKeys, id: \.self) { key in
+						Text(key).tag(key)
+					}
+				}
+				.labelsHidden()
+				.fixedSize()
+				.help("Select tag key")
+			}
+		} content: {
+			if let tagCosts = store.tagCosts {
+				VStack(alignment: .leading, spacing: 8) {
+					HomerCostLedgerTable(
+						rows: tagCosts.rows,
+						totalUsd: tagCosts.totalUsd,
+						emptyText: "No costs recorded for this tag."
+					)
+					if tagCosts.truncated {
+						Text("Totals cover only the newest 10,000 runs carrying this tag.")
+							.scaledFont(.caption)
+							.foregroundStyle(.secondary)
+					}
+				}
+				// The previous key stays until the picked one answers, as the month does.
+				.opacity(store.isTagCostsCurrent ? 1 : 0.5)
+			}
+			else {
+				HomerCostPlaceholder(failed: store.tagCostsError != nil)
 			}
 		}
 	}
@@ -463,7 +509,7 @@ private struct HomerCostBar: View {
 /// A ledger's per-agent spend with a total row, as `MonthlyCostsCard`/`TotalCostsCard` show it —
 /// the biggest spender first, each row with its share of the total as a bar.
 private struct HomerCostLedgerTable: View {
-	let rows: [HomerAgentCost]
+	let rows: [HomerCostRow]
 	let totalUsd: Double
 	let emptyText: String
 
@@ -472,13 +518,13 @@ private struct HomerCostLedgerTable: View {
 			HomerCostEmptyText(emptyText)
 		}
 		else {
-			let sorted = rows.sorted { $0.usd != $1.usd ? $0.usd > $1.usd : $0.agentName < $1.agentName }
+			let sorted = rows.sorted { $0.usd != $1.usd ? $0.usd > $1.usd : $0.name < $1.name }
 			VStack(alignment: .leading, spacing: 10) {
 				ForEach(sorted) { row in
 					let share = totalUsd > 0 ? row.usd / totalUsd : 0
 					VStack(alignment: .leading, spacing: 4) {
 						HStack(alignment: .firstTextBaseline, spacing: 8) {
-							Text(row.agentName)
+							Text(row.name)
 								.fontWeight(.medium)
 								.lineLimit(1)
 								.textSelection(.enabled)

@@ -209,6 +209,112 @@ struct HomerCostsReducerTests {
 		}
 	}
 
+	@Test("the tag card reads the first tracked key, then the picked one, and follows the keys a reload leaves")
+	func tagCostsFollowPickedKey() async {
+		let clock = TestClock()
+		let tracked = HomerCostSnapshot(globalUsdLast60s: 0.04, costTrackedTagKeys: ["ticket_id", "mr"])
+		let ticket = HomerCostByTag(key: "ticket_id", valuesUsd: ["PROJ-1": 1], totalUsd: 1)
+		let mr = HomerCostByTag(key: "mr", valuesUsd: ["!12": 2], totalUsd: 2)
+		let reads = LockIsolated<[String]>([])
+		let store = TestStore(initialState: loadedState()) {
+			HomerCostsReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerCostsClient.self].byTag = { _, key in
+				reads.withValue { $0.append(key) }
+				return key == "mr" ? mr : ticket
+			}
+		}
+		#expect(store.state.tagKeys.isEmpty)
+
+		// The snapshot names the keys: the first one is read, with nothing picked.
+		await store.send(.snapshotLoaded(.success(tracked))) {
+			$0.snapshot = tracked
+			$0.polledTagKey = "ticket_id"
+		}
+		await store.receive(\.tagCostsLoaded) {
+			$0.tagCosts = ticket
+		}
+		#expect(store.state.shownTagKey == "ticket_id")
+		#expect(store.state.isTagCostsCurrent)
+
+		await store.send(.tagKeySelected("mr")) {
+			$0.selectedTagKey = "mr"
+			$0.polledTagKey = "mr"
+		}
+		#expect(store.state.isTagCostsCurrent == false)
+		await store.receive(\.tagCostsLoaded) {
+			$0.tagCosts = mr
+		}
+		// The key on screen again reads nothing, and another key's late answer is dropped.
+		await store.send(.tagKeySelected("mr"))
+		await store.send(.tagCostsLoaded(key: "ticket_id", .success(ticket)))
+
+		// Re-read on the ledgers' cadence; a snapshot naming the same keys moves nothing.
+		await clock.advance(by: .seconds(30))
+		await store.receive(\.tagCostsLoaded)
+		await store.send(.snapshotLoaded(.success(tracked)))
+		#expect(reads.value == ["ticket_id", "mr", "mr"])
+
+		// A reload drops the picked key: the card falls back to the first one left.
+		let reloaded = HomerCostSnapshot(globalUsdLast60s: 0.04, costTrackedTagKeys: ["ticket_id"])
+		await store.send(.snapshotLoaded(.success(reloaded))) {
+			$0.snapshot = reloaded
+			$0.polledTagKey = "ticket_id"
+		}
+		await store.receive(\.tagCostsLoaded) {
+			$0.tagCosts = ticket
+		}
+
+		// No key tracked any more: the loop stops and the card goes.
+		let untracked = HomerCostSnapshot(globalUsdLast60s: 0.04)
+		await store.send(.snapshotLoaded(.success(untracked))) {
+			$0.snapshot = untracked
+			$0.polledTagKey = nil
+			$0.tagCosts = nil
+		}
+		reads.setValue([])
+		await clock.advance(by: .seconds(60))
+		#expect(reads.value.isEmpty)
+
+		await store.send(.hidden) {
+			$0.isShown = false
+		}
+	}
+
+	@Test("coming on screen with the keys known reads the tag at once; going off screen stops it")
+	func tagCostsStartWithPage() async {
+		let clock = TestClock()
+		let tracked = HomerCostSnapshot(globalUsdLast60s: 0.04, costTrackedTagKeys: ["ticket_id"])
+		let ticket = HomerCostByTag(key: "ticket_id", totalUsd: 0)
+		var initial = loadedState()
+		initial.isShown = false
+		initial.snapshot = tracked
+		let store = TestStore(initialState: initial) {
+			HomerCostsReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerCostsClient.self].snapshot = { _ in tracked }
+			$0[HomerCostsClient.self].monthly = { [october] _, _ in october }
+			$0[HomerCostsClient.self].totals = { [totals] _ in totals }
+			$0[HomerCostsClient.self].byTag = { _, _ in ticket }
+		}
+
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.send(.shown) {
+			$0.isShown = true
+			$0.polledTagKey = "ticket_id"
+		}
+		await settle(store)
+		#expect(store.state.tagCosts == ticket)
+		store.exhaustivity = .on
+
+		await store.send(.hidden) {
+			$0.isShown = false
+			$0.polledTagKey = nil
+		}
+	}
+
 	@Test("a 401 stops the page and tells the instance its session ended")
 	func unauthorized() async {
 		let store = TestStore(initialState: HomerCostsReducer.State(baseURL: Self.baseURL)) {

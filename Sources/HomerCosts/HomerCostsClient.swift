@@ -11,13 +11,16 @@ public struct HomerCostsClient: Sendable {
 	public var monthly: @Sendable (_ baseURL: String, _ month: String?) async throws -> HomerMonthlyCosts
 	/// All-time spend from the ledger.
 	public var totals: @Sendable (_ baseURL: String) async throws -> HomerTotalCosts
+	/// The spend per value of one cost-tracked tag key.
+	public var byTag: @Sendable (_ baseURL: String, _ key: String) async throws -> HomerCostByTag
 }
 
 extension HomerCostsClient: DependencyKey {
 	public static let liveValue = HomerCostsClient(
 		snapshot: { try await HomerAPI.costSnapshot(baseURL: $0) },
 		monthly: { try await HomerAPI.monthlyCosts(baseURL: $0, month: $1) },
-		totals: { try await HomerAPI.totalCosts(baseURL: $0) }
+		totals: { try await HomerAPI.totalCosts(baseURL: $0) },
+		byTag: { try await HomerAPI.costsByTag(baseURL: $0, key: $1) }
 	)
 }
 
