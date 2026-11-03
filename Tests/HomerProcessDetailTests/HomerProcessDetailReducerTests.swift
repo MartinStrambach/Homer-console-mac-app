@@ -364,15 +364,16 @@ struct HomerProcessDetailReducerTests {
 		await store.receive(\.delegate, .questionsChanged)
 	}
 
-	@Test("the running command's output opens on its live files")
+	@Test("the running command's output opens on its live files, with the harness its kind names")
 	func liveOutput() async {
 		let running = HomerProcess(
 			id: 7,
 			status: .working,
 			agentName: "factory",
-			executions: [.init(label: "checkout", resultCode: 0)],
+			executions: [.init(label: "checkout", resultCode: 0, stdOut: "/runs/7/cmd_0.out", kind: "script")],
 			currentCommand: "develop",
-			currentCommandStart: 1_700_000_000
+			currentCommandStart: 1_700_000_000,
+			currentCommandKind: "opencode"
 		)
 		let store = TestStore(initialState: state(running)) {
 			HomerProcessDetailReducer()
@@ -385,8 +386,19 @@ struct HomerProcessDetailReducerTests {
 				executionIndex: 1,
 				paths: [.stdout: "cmd_1.out", .stderr: "cmd_1.err"],
 				stream: .stdout,
+				harness: .opencode,
 				isLiveCommand: true,
 				commandStart: 1_700_000_000
+			)
+		}
+		// A finished command's own kind decides: a script has no conversation.
+		await store.send(.viewOutputTapped(executionIndex: 0, stream: .stdout)) {
+			$0.output = HomerProcessOutputReducer.State(
+				baseURL: Self.baseURL,
+				processId: 7,
+				executionIndex: 0,
+				paths: [.stdout: "/runs/7/cmd_0.out"],
+				stream: .stdout
 			)
 		}
 	}
@@ -397,15 +409,167 @@ struct HomerProcessDetailReducerTests {
 struct HomerProcessOutputReducerTests {
 	private static let baseURL = "https://homer.example.com"
 
-	private func state(isLive: Bool = false) -> HomerProcessOutputReducer.State {
+	private func state(isLive: Bool = false, harness: HomerLLMHarness? = nil) -> HomerProcessOutputReducer.State {
 		HomerProcessOutputReducer.State(
 			baseURL: Self.baseURL,
 			processId: 7,
 			executionIndex: 1,
 			paths: [.stdout: "cmd_1.out", .stderr: "cmd_1.err"],
 			stream: .stdout,
+			harness: harness,
 			isLiveCommand: isLive
 		)
+	}
+
+	private static func cursor(_ id: String) -> HomerLLMCursor {
+		HomerLLMCursor(id)!
+	}
+
+	@Test("a harness's stdout opens on its conversation, read from the server's events, not the file")
+	func conversationFromEvents() async {
+		let message = HomerLLMEvent.assistantMessage(messageID: "m1", text: "Done.")
+		let store = TestStore(initialState: state(harness: .codex)) {
+			HomerProcessOutputReducer()
+		} withDependencies: {
+			$0[HomerProcessDetailClient.self].llmEvents = { baseURL, processId, index, lastEventID in
+				#expect(baseURL == Self.baseURL)
+				#expect(processId == 7)
+				#expect(index == 1)
+				#expect(lastEventID == nil)
+				return AsyncThrowingStream { continuation in
+					continuation.yield(.event(message, cursor: Self.cursor("1:0:0:0")))
+					continuation.yield(.end)
+					continuation.finish()
+				}
+			}
+		}
+
+		#expect(store.state.offersConversation)
+		#expect(store.state.showsConversation)
+		await store.send(.task) {
+			$0.conversation.hasStarted = true
+			$0.conversation.isStreaming = true
+		}
+		await store.receive(\.llmEvent) {
+			$0.conversation.cursor = Self.cursor("1:0:0:0")
+			$0.conversation.hasEvents = true
+			$0.conversation.conversation = HomerLLMConversation([message])
+		}
+		await store.receive(\.llmEvent) {
+			$0.conversation.hasEnded = true
+			$0.conversation.isStreaming = false
+		}
+	}
+
+	@Test("a dropped stream resumes after the last event; replays are dropped, a new attempt starts over")
+	func conversationResumes() async {
+		let clock = TestClock()
+		let calls = LockIsolated<[String?]>([])
+		let first = HomerLLMEvent.assistantMessage(messageID: "m1", text: "Trying.")
+		let retried = HomerLLMEvent.assistantMessage(messageID: "m2", text: "Again.")
+		let store = TestStore(initialState: state(harness: .claude)) {
+			HomerProcessOutputReducer()
+		} withDependencies: {
+			$0.continuousClock = clock
+			$0[HomerProcessDetailClient.self].llmEvents = { _, _, _, lastEventID in
+				let call = calls.withValue { $0.append(lastEventID); return $0.count }
+				return AsyncThrowingStream { continuation in
+					if call == 1 {
+						continuation.yield(.event(first, cursor: Self.cursor("1:0:10:0")))
+						continuation.finish(throwing: HomerAPIError.unreachable("reset"))
+					}
+					else {
+						continuation.yield(.event(first, cursor: Self.cursor("1:0:10:0")))
+						continuation.yield(.event(retried, cursor: Self.cursor("1:1:0:0")))
+						continuation.yield(.end)
+						continuation.finish()
+					}
+				}
+			}
+		}
+
+		await store.send(.task) {
+			$0.conversation.hasStarted = true
+			$0.conversation.isStreaming = true
+		}
+		await store.receive(\.llmEvent) {
+			$0.conversation.cursor = Self.cursor("1:0:10:0")
+			$0.conversation.hasEvents = true
+			$0.conversation.conversation = HomerLLMConversation([first])
+		}
+		await clock.advance(by: .seconds(2))
+		// The server replays from before the resume point: already shown.
+		await store.receive(\.llmEvent)
+		await store.receive(\.llmEvent) {
+			$0.conversation.cursor = Self.cursor("1:1:0:0")
+			$0.conversation.conversation = HomerLLMConversation([retried])
+		}
+		await store.receive(\.llmEvent) {
+			$0.conversation.hasEnded = true
+			$0.conversation.isStreaming = false
+		}
+		#expect(calls.value == [nil, "1:0:10:0"])
+	}
+
+	@Test("a server without a conversation for the command falls back to the raw file")
+	func conversationUnavailable() async {
+		let store = TestStore(initialState: state(harness: .claude)) {
+			HomerProcessOutputReducer()
+		} withDependencies: {
+			$0[HomerProcessDetailClient.self].llmEvents = { _, _, _, _ in
+				AsyncThrowingStream { $0.finish(throwing: HomerAPIError.server(status: 404, message: nil)) }
+			}
+			$0[HomerProcessDetailClient.self].artifactContent = { _, _, _ in
+				HomerArtifactContent(text: "raw\n", byteCount: 4, isComplete: true)
+			}
+		}
+
+		await store.send(.task) {
+			$0.conversation.hasStarted = true
+			$0.conversation.isStreaming = true
+		}
+		await store.receive(\.conversationStopped) {
+			$0.conversation.isStreaming = false
+			$0.conversation.isUnavailable = true
+			$0.outputs[.stdout] = .init()
+			$0.outputs[.stdout]?.isLoading = true
+		}
+		await store.receive(\.loaded) {
+			$0.outputs[.stdout]?.text = "raw\n"
+			$0.outputs[.stdout]?.byteCount = 4
+			$0.outputs[.stdout]?.isLoading = false
+			$0.outputs[.stdout]?.hasLoaded = true
+		}
+		#expect(!store.state.offersConversation)
+		#expect(store.state.effectiveMode == .raw)
+	}
+
+	@Test("Raw reads the file only once asked; another command's stdout is raw from the start")
+	func rawOnRequest() async {
+		var initialState = state(harness: .opencode)
+		initialState.conversation.hasStarted = true
+		initialState.conversation.hasEnded = true
+		let store = TestStore(initialState: initialState) {
+			HomerProcessOutputReducer()
+		} withDependencies: {
+			$0[HomerProcessDetailClient.self].artifactContent = { _, _, _ in
+				HomerArtifactContent(text: "{}\n", byteCount: 3, isComplete: true)
+			}
+		}
+		store.exhaustivity = .off(showSkippedAssertions: false)
+
+		await store.send(.binding(.set(\.mode, .raw))) {
+			$0.mode = .raw
+		}
+		await store.receive(\.loaded)
+		#expect(store.state.output.hasLoaded)
+		// Back to the conversation: it ended, so nothing is read again.
+		await store.send(.binding(.set(\.mode, .conversation)))
+
+		#expect(!state(harness: nil).offersConversation)
+		var stderr = state(harness: .claude)
+		stderr.stream = .stderr
+		#expect(!stderr.offersConversation)
 	}
 
 	@Test("a finished file is read once")
@@ -429,7 +593,6 @@ struct HomerProcessOutputReducerTests {
 			output.text = "done\n"
 			output.byteCount = 5
 			output.hasLoaded = true
-			output.transcript = HomerClaudeTranscript(parsing: "done\n")
 			$0.outputs[.stdout] = output
 		}
 		#expect(store.state.effectiveMode == .raw)

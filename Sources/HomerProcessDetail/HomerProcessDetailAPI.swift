@@ -35,6 +35,47 @@ extension HomerAPI {
 		).processId
 	}
 
+	/// Follows command `executionIndex`'s conversation (`useLlmEventStream`): the server's
+	/// translation of an LLM harness command's stdout, from the start or — given the last
+	/// event's id — right after it, until the command is done. A command that is not an LLM
+	/// harness's answers 404, as does a server before Homer 1.27.
+	static func llmEvents(
+		baseURL: String,
+		processId: Int,
+		executionIndex: Int,
+		after lastEventID: String?
+	) -> AsyncThrowingStream<HomerLLMStreamEvent, any Error> {
+		let events = HomerAPI.events(
+			"/api/v1/stream/processes/\(processId)/llm-events",
+			baseURL: baseURL,
+			queryItems: [URLQueryItem(name: "cmd", value: String(executionIndex))],
+			headers: lastEventID.map { [("Last-Event-ID", $0)] } ?? []
+		)
+		return AsyncThrowingStream { continuation in
+			let task = Task {
+				do {
+					for try await event in events {
+						switch event.name {
+						case "llm.event":
+							if let llmEvent = HomerLLMEvent(frame: event.data) {
+								continuation.yield(.event(llmEvent, cursor: HomerLLMCursor(event.id)))
+							}
+						case "llm.end":
+							continuation.yield(.end)
+						default:
+							continue
+						}
+					}
+					continuation.finish()
+				}
+				catch {
+					continuation.finish(throwing: error)
+				}
+			}
+			continuation.onTermination = { _ in task.cancel() }
+		}
+	}
+
 	static func artifacts(baseURL: String, processId: Int) async throws -> [HomerArtifact] {
 		let data = try await send(
 			"GET",

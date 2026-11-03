@@ -51,6 +51,9 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		public var stdErr: String?
 		/// Why the command failed, or why it was skipped.
 		public var errMsg: String?
+		/// The command's type: `cmd`, `script`, `claude`, `codex`, `opencode`, `agent`,
+		/// `langgraph`, `runnerCmd`; empty for older rows, nil from an older server.
+		public var kind: String?
 
 		public init(
 			label: String,
@@ -60,7 +63,8 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			end: Double? = nil,
 			stdOut: String? = nil,
 			stdErr: String? = nil,
-			errMsg: String? = nil
+			errMsg: String? = nil,
+			kind: String? = nil
 		) {
 			self.label = label
 			self.resultCode = resultCode
@@ -70,6 +74,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			self.stdOut = stdOut
 			self.stdErr = stdErr
 			self.errMsg = errMsg
+			self.kind = kind
 		}
 	}
 
@@ -152,6 +157,9 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	public var currentCommand: String?
 	/// When the running command started, in epoch seconds.
 	public var currentCommandStart: Double?
+	/// The running command's type (`Execution.kind`); nil when nothing runs, after a server
+	/// restart, or from an older server.
+	public var currentCommandKind: String?
 	/// When the run's workspace is deleted, in epoch seconds; nil while it runs or before the
 	/// purge is scheduled.
 	public var purgeAt: Double?
@@ -177,6 +185,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		executions: [Execution] = [],
 		currentCommand: String? = nil,
 		currentCommandStart: Double? = nil,
+		currentCommandKind: String? = nil,
 		purgeAt: Double? = nil,
 		runner: Runner? = nil,
 		openQuestions: Int? = nil,
@@ -195,6 +204,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		self.executions = executions
 		self.currentCommand = currentCommand
 		self.currentCommandStart = currentCommandStart
+		self.currentCommandKind = currentCommandKind
 		self.purgeAt = purgeAt
 		self.runner = runner
 		self.openQuestions = openQuestions
@@ -217,6 +227,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		executions = try container.decodeIfPresent([Execution].self, forKey: .executions) ?? []
 		currentCommand = try container.decodeIfPresent(String.self, forKey: .currentCommand)
 		currentCommandStart = try container.decodeIfPresent(Double.self, forKey: .currentCommandStart)
+		currentCommandKind = try container.decodeIfPresent(String.self, forKey: .currentCommandKind)
 		purgeAt = try container.decodeIfPresent(Double.self, forKey: .purgeAt)
 		runner = try container.decodeIfPresent(Runner.self, forKey: .runner)
 		openQuestions = try container.decodeIfPresent(Int.self, forKey: .openQuestions)
@@ -229,6 +240,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 
 	private enum CodingKeys: String, CodingKey {
 		case id, status, agentName, group, owner, history, executions, currentCommand, currentCommandStart
+		case currentCommandKind
 		case purgeAt, runner, openQuestions, costUsd, parentProcessId, rootProcessId, tags
 		case langfuseTraceUrl
 	}
@@ -617,4 +629,33 @@ nonisolated struct HomerAgentList: Decodable {
 
 package nonisolated struct HomerRetryResponse: Decodable {
 	package var processId: Int
+}
+
+/// An LLM harness a command runs — the command types whose stdout the server translates into
+/// conversation events (`isLlmKind` in `types/homer.ts`): Claude Code, Codex and, since Homer
+/// 1.39, opencode.
+public nonisolated enum HomerLLMHarness: String, CaseIterable, Equatable, Sendable {
+	case claude
+	case codex
+	case opencode
+
+	/// The harness a command of this `kind` runs; nil for any other command, or an older row.
+	public init?(kind: String?) {
+		guard let kind, let harness = Self(rawValue: kind) else {
+			return nil
+		}
+		self = harness
+	}
+
+	/// The harness's own name, as its tool spells it.
+	public var title: String {
+		switch self {
+		case .claude:
+			"Claude"
+		case .codex:
+			"Codex"
+		case .opencode:
+			"opencode"
+		}
+	}
 }

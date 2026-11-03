@@ -15,7 +15,7 @@ Sources/
   HomerUI/              # DesignSystem/ (text scaling, surfaces and pills, header button, empty state, title bar area) + Components/ shared by pages
   HomerWorkflowGraph/   # LangGraph workflow models, the dagre-like layout, graph and status views
   HomerSignIn/          # sign-in form (reducer + view), Fill from Passwords
-  HomerProcessDetail/   # a run's page: status, its flow or children, executions, command output, artifacts, Claude transcript
+  HomerProcessDetail/   # a run's page: status, its flow or children, executions, command output, artifacts, LLM harness conversations
   HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor
   HomerContinuations/   # Continuations page
   HomerCosts/           # Costs page (admins)
@@ -85,7 +85,7 @@ Each module's notes are in its own README, next to its sources:
 | `HomerUI` | [text scaling, why `DesignSystem` is `package`, the web page sheet](Sources/HomerUI/README.md) |
 | `HomerWorkflowGraph` | [LangGraph workflow probing and polling, the dagre-like graph layout](Sources/HomerWorkflowGraph/README.md) |
 | `HomerSignIn` | [sign-in and session expiry, Fill from Passwords](Sources/HomerSignIn/README.md) |
-| `HomerProcessDetail` | [the process page, command output streaming, Claude transcripts, downloads](Sources/HomerProcessDetail/README.md) |
+| `HomerProcessDetail` | [the process page, command output streaming, LLM harness conversations, downloads](Sources/HomerProcessDetail/README.md) |
 | `HomerAgents` | [Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor and debug runs](Sources/HomerAgents/README.md) |
 | `HomerContinuations` | [the Continuations page](Sources/HomerContinuations/README.md) |
 | `HomerCosts` | [the Costs page](Sources/HomerCosts/README.md) |
