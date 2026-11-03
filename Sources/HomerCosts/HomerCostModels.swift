@@ -19,19 +19,24 @@ public nonisolated struct HomerCostSnapshot: Equatable, Sendable, Decodable {
 	public var perAgentCapUsdPerDay: [String: Double]
 	/// When the server took the snapshot, in epoch seconds.
 	public var snapshotAtSec: Double?
+	/// The tag keys whose spend the server sums per value (`costTrackedTagKeys` in its config),
+	/// in the config's order — each one a choice of the "Cost by tag" card.
+	public var costTrackedTagKeys: [String]
 
 	public init(
 		globalUsdLast60s: Double,
 		globalCapUsdPerMin: Double? = nil,
 		perAgentUsdLast24h: [String: Double] = [:],
 		perAgentCapUsdPerDay: [String: Double] = [:],
-		snapshotAtSec: Double? = nil
+		snapshotAtSec: Double? = nil,
+		costTrackedTagKeys: [String] = []
 	) {
 		self.globalUsdLast60s = globalUsdLast60s
 		self.globalCapUsdPerMin = globalCapUsdPerMin
 		self.perAgentUsdLast24h = perAgentUsdLast24h
 		self.perAgentCapUsdPerDay = perAgentCapUsdPerDay
 		self.snapshotAtSec = snapshotAtSec
+		self.costTrackedTagKeys = costTrackedTagKeys
 	}
 
 	public init(from decoder: any Decoder) throws {
@@ -41,10 +46,12 @@ public nonisolated struct HomerCostSnapshot: Equatable, Sendable, Decodable {
 		perAgentUsdLast24h = try container.decodeIfPresent([String: Double].self, forKey: .perAgentUsdLast24h) ?? [:]
 		perAgentCapUsdPerDay = try container.decodeIfPresent([String: Double].self, forKey: .perAgentCapUsdPerDay) ?? [:]
 		snapshotAtSec = try container.decodeIfPresent(Double.self, forKey: .snapshotAtSec)
+		costTrackedTagKeys = try container.decodeIfPresent([String].self, forKey: .costTrackedTagKeys) ?? []
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case globalUsdLast60s, globalCapUsdPerMin, perAgentUsdLast24h, perAgentCapUsdPerDay, snapshotAtSec
+		case costTrackedTagKeys
 	}
 
 	/// One agent's row of the per-agent table: its 24 h spend against its cap.
@@ -71,23 +78,25 @@ public nonisolated struct HomerCostSnapshot: Equatable, Sendable, Decodable {
 	}
 }
 
-/// One agent's spend in a ledger table (a month's, or all time).
-public nonisolated struct HomerAgentCost: Equatable, Sendable, Identifiable {
-	public var agentName: String
+/// One row of a breakdown table: an agent's spend in a ledger (a month's, or all time), or a
+/// tag value's in the cost by tag.
+public nonisolated struct HomerCostRow: Equatable, Sendable, Identifiable {
+	/// The agent, or the tag value.
+	public var name: String
 	public var usd: Double
 
-	public init(agentName: String, usd: Double) {
-		self.agentName = agentName
+	public init(name: String, usd: Double) {
+		self.name = name
 		self.usd = usd
 	}
 
 	public var id: String {
-		agentName
+		name
 	}
 
-	/// The rows of a `perAgentUsd` map, sorted by agent name as the console lists them.
-	static func rows(_ perAgentUsd: [String: Double]) -> [Self] {
-		perAgentUsd.keys.sorted().map { Self(agentName: $0, usd: perAgentUsd[$0] ?? 0) }
+	/// The rows of a name → spend map, sorted by name as the console lists them.
+	static func rows(_ usdByName: [String: Double]) -> [Self] {
+		usdByName.keys.sorted().map { Self(name: $0, usd: usdByName[$0] ?? 0) }
 	}
 }
 
@@ -119,8 +128,8 @@ public nonisolated struct HomerMonthlyCosts: Equatable, Sendable, Decodable {
 		case month, perAgentUsd, totalUsd, availableMonths
 	}
 
-	public var rows: [HomerAgentCost] {
-		HomerAgentCost.rows(perAgentUsd)
+	public var rows: [HomerCostRow] {
+		HomerCostRow.rows(perAgentUsd)
 	}
 
 	/// The month picker's choices, newest first: the months with entries plus the one shown,
@@ -150,8 +159,42 @@ public nonisolated struct HomerTotalCosts: Equatable, Sendable, Decodable {
 		case perAgentUsd, totalUsd
 	}
 
-	public var rows: [HomerAgentCost] {
-		HomerAgentCost.rows(perAgentUsd)
+	public var rows: [HomerCostRow] {
+		HomerCostRow.rows(perAgentUsd)
+	}
+}
+
+/// The spend per value of one cost-tracked tag key (`GET /api/v1/costs/by-tag/{key}`), e.g.
+/// each ticket's under `ticket_id`.
+public nonisolated struct HomerCostByTag: Equatable, Sendable, Decodable {
+	public var key: String
+	public var valuesUsd: [String: Double]
+	public var totalUsd: Double
+	/// More runs carried the tag than the server sums (its newest 10,000), so the figures are
+	/// short of the whole.
+	public var truncated: Bool
+
+	public init(key: String, valuesUsd: [String: Double] = [:], totalUsd: Double, truncated: Bool = false) {
+		self.key = key
+		self.valuesUsd = valuesUsd
+		self.totalUsd = totalUsd
+		self.truncated = truncated
+	}
+
+	public init(from decoder: any Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		key = try container.decode(String.self, forKey: .key)
+		valuesUsd = try container.decodeIfPresent([String: Double].self, forKey: .valuesUsd) ?? [:]
+		totalUsd = try container.decode(Double.self, forKey: .totalUsd)
+		truncated = try container.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case key, valuesUsd, totalUsd, truncated
+	}
+
+	public var rows: [HomerCostRow] {
+		HomerCostRow.rows(valuesUsd)
 	}
 }
 
