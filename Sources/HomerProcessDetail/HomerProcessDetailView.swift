@@ -609,11 +609,11 @@ struct HomerExecutionRow: View {
 					outcomeLabel
 					Spacer()
 					if let accounting = execution.llmAccounting, accounting.source != HomerCostSource.none {
-						Label(accounting.costText, systemImage: "dollarsign.circle")
+						Text(accounting.costText)
 							.scaledFont(.callout)
 							.foregroundStyle(.secondary)
 							.monospacedDigit()
-							.help("LLM cost (\(HomerCostSource.label(accounting.source)))")
+							.help("LLM cost, \(HomerCostSource.label(accounting.source))")
 					}
 					if let start = execution.start, let end = execution.end {
 						Label(HomerFormat.duration(from: start, to: end), systemImage: "timer")
@@ -692,7 +692,18 @@ struct HomerExecutionRow: View {
 					}
 				}
 				if let accounting = execution.llmAccounting {
-					HomerGridRow("LLM cost") { HomerLLMCostLine(accounting: accounting) }
+					HomerGridRow("LLM cost") { HomerLLMCost(accounting: accounting) }
+					if let usage = accounting.usage {
+						HomerGridRow("Tokens") { HomerTokenCounts(usage: usage) }
+					}
+					if let session = accounting.sessionId {
+						HomerGridRow("Session") {
+							Text(session)
+								.scaledFont(.callout, design: .monospaced)
+								.foregroundStyle(.secondary)
+								.textSelection(.enabled)
+						}
+					}
 				}
 			}
 			if execution.label == store.langGraphLabel {
@@ -747,34 +758,56 @@ struct HomerExecutionRow: View {
 	}
 }
 
-/// How a harness command was priced (`execution-item.tsx`'s `LlmCostLine`): the figure, its
-/// source, why it is degraded, its tokens and its session.
-struct HomerLLMCostLine: View {
+/// What a harness command was charged and by which price (`execution-item.tsx`'s
+/// `LlmCostLine`), with why the figure is degraded under it: a fallback to a lower price in
+/// orange, a session figure charged before every call was in as a note.
+struct HomerLLMCost: View {
 	let accounting: HomerLLMAccounting
 
 	var body: some View {
-		HomerFlowLayout(spacing: 8) {
-			Text(accounting.costText)
-				.scaledFont(.callout, design: .monospaced)
-				.textSelection(.enabled)
-			HomerCostSourceTag(source: accounting.source)
-			if let fallback = accounting.fallbackText {
-				Text("(\(fallback))")
-					.foregroundStyle(.secondary)
-			}
-			if let usage = accounting.usage {
-				Text(usage.text)
-					.foregroundStyle(.secondary)
-					.monospacedDigit()
-			}
-			if let session = accounting.sessionId {
-				HStack(spacing: 4) {
-					Text("session")
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(alignment: .firstTextBaseline, spacing: 6) {
+				if accounting.source == HomerCostSource.none {
+					Text(accounting.costText)
 						.foregroundStyle(.secondary)
-					Text(session)
+				}
+				else {
+					Text(accounting.costText)
 						.scaledFont(.callout, design: .monospaced)
-						.foregroundStyle(.secondary)
+						.fontWeight(.medium)
 						.textSelection(.enabled)
+				}
+				HomerCostSourceTag(source: accounting.source)
+			}
+			if let reason = accounting.fallbackText {
+				Label(reason, systemImage: accounting.isFallback ? "exclamationmark.triangle" : "clock")
+					.scaledFont(.caption)
+					.foregroundStyle(accounting.isFallback ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+					.textSelection(.enabled)
+			}
+		}
+	}
+}
+
+/// A command's tokens as `1,200 in · 340 out · 12 reasoning`: the counts in the primary color,
+/// what they count in the secondary one.
+struct HomerTokenCounts: View {
+	let usage: HomerLLMAccounting.Usage
+
+	var body: some View {
+		HomerFlowLayout(spacing: 6) {
+			ForEach(Array(usage.counts.enumerated()), id: \.element.id) { index, count in
+				HStack(alignment: .firstTextBaseline, spacing: 6) {
+					if index > 0 {
+						Text(verbatim: "·")
+							.foregroundStyle(.tertiary)
+					}
+					HStack(alignment: .firstTextBaseline, spacing: 3) {
+						Text(count.value.formatted())
+							.monospacedDigit()
+						Text(count.name)
+							.foregroundStyle(.secondary)
+					}
 				}
 			}
 		}

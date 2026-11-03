@@ -60,9 +60,12 @@ struct HomerLLMAccountingTests {
 	func fallbackText() {
 		let session = HomerLLMAccounting(costUsd: 1, source: "session", fallbackReason: "incomplete: 3 of 5 calls ingested")
 		#expect(session.fallbackText == "incomplete: 3 of 5 calls ingested")
+		#expect(session.isFallback == false)
 		let cli = HomerLLMAccounting(costUsd: 1, source: "cli", fallbackReason: "session endpoint timed out")
-		#expect(cli.fallbackText == "fallback: session endpoint timed out")
+		#expect(cli.fallbackText == "Fallback: session endpoint timed out")
+		#expect(cli.isFallback)
 		#expect(HomerLLMAccounting(costUsd: 1, source: "cli").fallbackText == nil)
+		#expect(HomerLLMAccounting(costUsd: 1, source: "cli").isFallback == false)
 	}
 
 	@Test("sources are worded as the console words them, an unknown one as itself")
@@ -77,9 +80,10 @@ struct HomerLLMAccountingTests {
 	}
 
 	@Test("tokens list input and output, then only the counts that are not zero")
-	func usageText() {
+	func usageCounts() {
 		let usage = HomerLLMAccounting.Usage(input: 1200, output: 340, cacheRead: 9000, reasoning: 12)
-		#expect(usage.text == "in \(1200.formatted()) / out 340 / cache↑ \(9000.formatted()) / reasoning 12")
-		#expect(HomerLLMAccounting.Usage(input: 5, output: 6).text == "in 5 / out 6")
+		#expect(usage.counts.map(\.name) == ["in", "out", "cache read", "reasoning"])
+		#expect(usage.counts.map(\.value) == [1200, 340, 9000, 12])
+		#expect(HomerLLMAccounting.Usage().counts.map(\.name) == ["in", "out"])
 	}
 }

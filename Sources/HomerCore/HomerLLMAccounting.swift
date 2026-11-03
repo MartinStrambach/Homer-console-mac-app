@@ -33,20 +33,29 @@ public nonisolated struct HomerLLMAccounting: Equatable, Sendable, Decodable {
 			case input, output, cacheRead, cacheWrite, reasoning
 		}
 
-		/// `in 1,200 / out 340 / cache↑ 9,000 / reasoning 12`, the counts that are not zero past
-		/// input and output — the conversation's summary writes its tokens the same way.
-		public var text: String {
-			var text = "in \(input.formatted()) / out \(output.formatted())"
-			if cacheRead > 0 {
-				text += " / cache↑ \(cacheRead.formatted())"
+		/// One count of `counts`: how many, and of what.
+		public nonisolated struct Count: Equatable, Sendable, Identifiable {
+			public var name: String
+			public var value: Int
+
+			public var id: String {
+				name
 			}
-			if cacheWrite > 0 {
-				text += " / cache+ \(cacheWrite.formatted())"
-			}
-			if reasoning > 0 {
-				text += " / reasoning \(reasoning.formatted())"
-			}
-			return text
+		}
+
+		/// Input and output, then only the counts that are not zero — a harness that caches
+		/// nothing or does not reason shows two.
+		public var counts: [Count] {
+			[
+				Count(name: "in", value: input),
+				Count(name: "out", value: output),
+				Count(name: "cache read", value: cacheRead),
+				Count(name: "cache write", value: cacheWrite),
+				Count(name: "reasoning", value: reasoning),
+			]
+			.enumerated()
+			.filter { $0.offset < 2 || $0.element.value > 0 }
+			.map(\.element)
 		}
 	}
 
@@ -94,10 +103,16 @@ public nonisolated struct HomerLLMAccounting: Equatable, Sendable, Decodable {
 		source == HomerCostSource.none ? HomerCostSource.label(source) : HomerFormat.cost(costUsd)
 	}
 
-	/// The fallback reason as it reads beside the source (`costReasonText`): a `session` reason
-	/// (`incomplete: 3 of 5 calls ingested`) is no fallback, any other is one.
+	/// The figure fell back to a lower price than the one configured (`costReasonText`): any
+	/// reason but a `session` one, which (`incomplete: 3 of 5 calls ingested`) only says the
+	/// session figure was charged before the endpoint had every call.
+	public var isFallback: Bool {
+		fallbackReason != nil && source != HomerCostSource.session
+	}
+
+	/// The reason as it reads under the figure: `Fallback: …` for a fallback, else as sent.
 	public var fallbackText: String? {
-		fallbackReason.map { source == HomerCostSource.session ? $0 : "fallback: \($0)" }
+		fallbackReason.map { isFallback ? "Fallback: \($0)" : $0 }
 	}
 }
 
