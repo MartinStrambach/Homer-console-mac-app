@@ -54,6 +54,8 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		/// The command's type: `cmd`, `script`, `claude`, `codex`, `opencode`, `agent`,
 		/// `langgraph`, `runnerCmd`; empty for older rows, nil from an older server.
 		public var kind: String?
+		/// How an LLM harness command's spend was priced; nil for any other command.
+		public var llmAccounting: HomerLLMAccounting?
 
 		public init(
 			label: String,
@@ -64,7 +66,8 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			stdOut: String? = nil,
 			stdErr: String? = nil,
 			errMsg: String? = nil,
-			kind: String? = nil
+			kind: String? = nil,
+			llmAccounting: HomerLLMAccounting? = nil
 		) {
 			self.label = label
 			self.resultCode = resultCode
@@ -75,6 +78,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			self.stdErr = stdErr
 			self.errMsg = errMsg
 			self.kind = kind
+			self.llmAccounting = llmAccounting
 		}
 	}
 
@@ -167,6 +171,9 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	public var openQuestions: Int?
 	/// Billed Claude spend for the run, from the server's cost ledger.
 	public var costUsd: Double?
+	/// Which price produced `costUsd` (`HomerCostSource`): `cli`, `session`, `mixed` or `none`;
+	/// nil from an older server.
+	public var costSource: String?
 	/// The run that started this one; nil at a flow's root.
 	public var parentProcessId: Int?
 	/// The first run of this run's flow; nil at the root itself.
@@ -194,6 +201,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		runner: Runner? = nil,
 		openQuestions: Int? = nil,
 		costUsd: Double? = nil,
+		costSource: String? = nil,
 		parentProcessId: Int? = nil,
 		rootProcessId: Int? = nil,
 		tags: [String]? = nil,
@@ -214,6 +222,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		self.runner = runner
 		self.openQuestions = openQuestions
 		self.costUsd = costUsd
+		self.costSource = costSource
 		self.parentProcessId = parentProcessId
 		self.rootProcessId = rootProcessId
 		self.tags = tags
@@ -238,6 +247,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		runner = try container.decodeIfPresent(Runner.self, forKey: .runner)
 		openQuestions = try container.decodeIfPresent(Int.self, forKey: .openQuestions)
 		costUsd = try container.decodeIfPresent(Double.self, forKey: .costUsd)
+		costSource = try container.decodeIfPresent(String.self, forKey: .costSource)
 		parentProcessId = try container.decodeIfPresent(Int.self, forKey: .parentProcessId)
 		rootProcessId = try container.decodeIfPresent(Int.self, forKey: .rootProcessId)
 		tags = try container.decodeIfPresent([String].self, forKey: .tags)
@@ -248,7 +258,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	private enum CodingKeys: String, CodingKey {
 		case id, status, agentName, group, owner, history, executions, currentCommand, currentCommandStart
 		case currentCommandKind
-		case purgeAt, runner, openQuestions, costUsd, parentProcessId, rootProcessId, tags
+		case purgeAt, runner, openQuestions, costUsd, costSource, parentProcessId, rootProcessId, tags
 		case langfuseTraceUrl, failureReason
 	}
 

@@ -76,6 +76,9 @@ public struct HomerProcessOutputReducer: Sendable {
 		public let isLiveCommand: Bool
 		/// When the running command started, for the live header's clock.
 		public let commandStart: Double?
+		/// How a finished harness command was priced, for the conversation's summary; nil while
+		/// it runs and for any other command.
+		public let llmAccounting: HomerLLMAccounting?
 
 		public init(
 			baseURL: String,
@@ -85,7 +88,8 @@ public struct HomerProcessOutputReducer: Sendable {
 			stream: HomerOutputStream,
 			harness: HomerLLMHarness? = nil,
 			isLiveCommand: Bool = false,
-			commandStart: Double? = nil
+			commandStart: Double? = nil,
+			llmAccounting: HomerLLMAccounting? = nil
 		) {
 			self.baseURL = baseURL
 			self.processId = processId
@@ -95,6 +99,7 @@ public struct HomerProcessOutputReducer: Sendable {
 			self.harness = harness
 			self.isLiveCommand = isLiveCommand
 			self.commandStart = commandStart
+			self.llmAccounting = llmAccounting
 		}
 
 		public var output: Output {

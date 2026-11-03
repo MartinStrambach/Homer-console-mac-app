@@ -329,8 +329,13 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// From the cost ledger, not the output: still there once the artifacts are purged.
 			HomerStat("Cost", systemImage: "dollarsign.circle") {
 				if let cost = process.costUsd, cost > 0 {
-					Text(HomerFormat.cost(cost))
-						.monospacedDigit()
+					HStack(alignment: .firstTextBaseline, spacing: 6) {
+						Text(HomerFormat.cost(cost))
+							.monospacedDigit()
+						if let source = process.costSource {
+							HomerCostSourceTag(source: source)
+						}
+					}
 				}
 				else {
 					Text(verbatim: "—")
@@ -603,6 +608,13 @@ struct HomerExecutionRow: View {
 						.fontWeight(.medium)
 					outcomeLabel
 					Spacer()
+					if let accounting = execution.llmAccounting, accounting.source != HomerCostSource.none {
+						Label(accounting.costText, systemImage: "dollarsign.circle")
+							.scaledFont(.callout)
+							.foregroundStyle(.secondary)
+							.monospacedDigit()
+							.help("LLM cost (\(HomerCostSource.label(accounting.source)))")
+					}
 					if let start = execution.start, let end = execution.end {
 						Label(HomerFormat.duration(from: start, to: end), systemImage: "timer")
 							.scaledFont(.callout)
@@ -679,6 +691,9 @@ struct HomerExecutionRow: View {
 							.textSelection(.enabled)
 					}
 				}
+				if let accounting = execution.llmAccounting {
+					HomerGridRow("LLM cost") { HomerLLMCostLine(accounting: accounting) }
+				}
 			}
 			if execution.label == store.langGraphLabel {
 				VStack(alignment: .leading, spacing: 6) {
@@ -729,6 +744,60 @@ struct HomerExecutionRow: View {
 			Text("-")
 				.foregroundStyle(.secondary)
 		}
+	}
+}
+
+/// How a harness command was priced (`execution-item.tsx`'s `LlmCostLine`): the figure, its
+/// source, why it is degraded, its tokens and its session.
+struct HomerLLMCostLine: View {
+	let accounting: HomerLLMAccounting
+
+	var body: some View {
+		HomerFlowLayout(spacing: 8) {
+			Text(accounting.costText)
+				.scaledFont(.callout, design: .monospaced)
+				.textSelection(.enabled)
+			HomerCostSourceTag(source: accounting.source)
+			if let fallback = accounting.fallbackText {
+				Text("(\(fallback))")
+					.foregroundStyle(.secondary)
+			}
+			if let usage = accounting.usage {
+				Text(usage.text)
+					.foregroundStyle(.secondary)
+					.monospacedDigit()
+			}
+			if let session = accounting.sessionId {
+				HStack(spacing: 4) {
+					Text("session")
+						.foregroundStyle(.secondary)
+					Text(session)
+						.scaledFont(.callout, design: .monospaced)
+						.foregroundStyle(.secondary)
+						.textSelection(.enabled)
+				}
+			}
+		}
+	}
+}
+
+/// Which price a cost figure came from, outlined so it does not read as a status pill, with the
+/// console's explanation as its tooltip.
+struct HomerCostSourceTag: View {
+	let source: String
+
+	var body: some View {
+		Text(HomerCostSource.label(source))
+			.scaledFont(.caption2)
+			.foregroundStyle(.secondary)
+			.lineLimit(1)
+			.padding(.horizontal, 5)
+			.padding(.vertical, 1)
+			.overlay {
+				RoundedRectangle(cornerRadius: 4, style: .continuous)
+					.strokeBorder(Color(nsColor: .separatorColor))
+			}
+			.help(HomerCostSource.explanation(source))
 	}
 }
 
