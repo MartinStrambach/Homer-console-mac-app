@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a page reducer of an instance (`HomerContinuationsReducer`, `HomerAgentsReducer`,
-/// `HomerCostsReducer`) asks of the instance holding it.
+/// `HomerCostsReducer`, `HomerRunnersReducer`) asks of the instance holding it.
 public enum HomerPageDelegate: Equatable, Sendable {
 	/// A call answered 401: the instance's session expired, and the instance signs out.
 	case unauthorized
@@ -21,4 +21,5 @@ package enum HomerChildPage: Equatable, Sendable {
 	case agents
 	case schedules
 	case costs
+	case runners
 }

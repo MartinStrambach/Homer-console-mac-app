@@ -22,10 +22,11 @@ public struct HomerConsoleReducer: Sendable {
 		case schedules
 		case agents
 		case costs
+		case runners
 
 		/// The console shows these to admins only (`sidebar.tsx`).
 		public var isAdminOnly: Bool {
-			self == .schedules || self == .costs
+			self == .schedules || self == .costs || self == .runners
 		}
 
 		/// The page's route in the web console, which is also its title there.
@@ -37,6 +38,7 @@ public struct HomerConsoleReducer: Sendable {
 			case .schedules: "schedules"
 			case .agents: "agents"
 			case .costs: "costs"
+			case .runners: "runners"
 			}
 		}
 
@@ -48,6 +50,7 @@ public struct HomerConsoleReducer: Sendable {
 			case .schedules: "Schedules"
 			case .agents: "Agents"
 			case .costs: "Costs"
+			case .runners: "Runners"
 			}
 		}
 	}
