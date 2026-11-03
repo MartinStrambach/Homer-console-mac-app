@@ -314,13 +314,20 @@ public struct HomerConsoleView<Leading: View>: View {
 		}
 	}
 
-	/// Who is signed in, the server's version (the console's corner badge), an admin's
-	/// maintenance-mode toggle, and Sign Out.
+	/// Who is signed in, the server's version (the console's corner badge), an admin's server
+	/// uptime and maintenance-mode toggle, and Sign Out.
 	private func accountMenu(user: HomerUser, instance: HomerInstanceReducer.State) -> some View {
 		Menu {
 			Text("Signed in as \(user.username)")
 			if let version = instance.homerVersion {
 				Text("Homer \(version)")
+			}
+			// An admin's only: `/status` answers no one else.
+			if user.isAdmin, let status = instance.serverStatus, let uptime = instance.serverUptime(at: .now) {
+				Text("\(HomerServerStatus.uptimeText(uptime)) · started \(HomerFormat.timestamp(status.startTime))")
+				if let lastProcessId = status.lastProcessId {
+					Text("Newest run #\(lastProcessId)")
+				}
 			}
 			// Only once `/health` has said the server has the mode (Homer 1.36).
 			if user.isAdmin, let isOn = instance.maintenance {

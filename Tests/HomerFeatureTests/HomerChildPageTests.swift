@@ -31,7 +31,7 @@ struct HomerChildPageTests {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = TestClock()
-			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+			$0[HomerContinuationsClient.self].continuations = { _, _ in HomerRecordPage(items: []) }
 			$0[HomerAgentsClient.self].agents = { _ in [agent] }
 		}
 
@@ -42,8 +42,11 @@ struct HomerChildPageTests {
 		await store.receive(\.continuations.shown) {
 			$0.continuations.isShown = true
 		}
-		await store.receive(\.continuations.loaded.success) {
-			$0.continuations.hasLoaded = true
+		await store.receive(\.continuations.continuations.shown) {
+			$0.continuations.continuations.isShown = true
+		}
+		await store.receive(\.continuations.continuations.loaded.success) {
+			$0.continuations.continuations.hasLoaded = true
 		}
 
 		await store.send(.pageChanged(.agents)) {
@@ -52,6 +55,9 @@ struct HomerChildPageTests {
 		}
 		await store.receive(\.continuations.hidden) {
 			$0.continuations.isShown = false
+		}
+		await store.receive(\.continuations.continuations.hidden) {
+			$0.continuations.continuations.isShown = false
 		}
 		await store.receive(\.agents.shown) {
 			$0.agents.shownPage = .agents
@@ -89,10 +95,13 @@ struct HomerChildPageTests {
 		initialState.page = .continuations
 		initialState.shownChildPage = .continuations
 		initialState.continuations.isShown = true
+		initialState.continuations.continuations.isShown = true
 		let fetches = LockIsolated(0)
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
@@ -100,7 +109,7 @@ struct HomerChildPageTests {
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
 			$0[HomerContinuationsClient.self].continuations = { _, _ in
 				fetches.withValue { $0 += 1 }
-				return []
+				return HomerRecordPage(items: [])
 			}
 		}
 
@@ -108,7 +117,8 @@ struct HomerChildPageTests {
 		store.exhaustivity = .off(showSkippedAssertions: false)
 		await store.send(.refreshTapped)
 		await store.receive(\.continuations.refreshTapped)
-		await store.receive(\.continuations.loaded.success)
+		await store.receive(\.continuations.continuations.refreshTapped)
+		await store.receive(\.continuations.continuations.loaded.success)
 		// Both lists, pending and failed.
 		#expect(fetches.value == 2)
 		await store.skipInFlightEffects()
@@ -191,13 +201,14 @@ struct HomerChildPageTests {
 		initialState.page = .continuations
 		initialState.shownChildPage = .continuations
 		initialState.continuations.isShown = true
+		initialState.continuations.continuations.isShown = true
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
 			$0.continuousClock = TestClock()
 			$0[HomerProcessDetailClient.self].process = { _, _ in process }
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
-			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+			$0[HomerContinuationsClient.self].continuations = { _, _ in HomerRecordPage(items: []) }
 			$0[HomerClient.self].openQuestions = { _ in HomerQuestionPage(questions: []) }
 			$0[HomerClient.self].runQuestions = { _, _ in HomerQuestionPage(questions: []) }
 			$0[HomerProcessDetailClient.self].runMessages = { _, _ in [] }
@@ -214,6 +225,9 @@ struct HomerChildPageTests {
 		}
 		await store.receive(\.continuations.hidden) {
 			$0.continuations.isShown = false
+		}
+		await store.receive(\.continuations.continuations.hidden) {
+			$0.continuations.continuations.isShown = false
 		}
 		await store.receive(\.runQuestionsLoaded) {
 			$0.runQuestions = HomerRunQuestions(processId: 12, page: HomerQuestionPage(questions: []))
@@ -261,8 +275,11 @@ struct HomerChildPageTests {
 		await store.receive(\.continuations.shown) {
 			$0.continuations.isShown = true
 		}
-		await store.receive(\.continuations.loaded.success) {
-			$0.continuations.hasLoaded = true
+		await store.receive(\.continuations.continuations.shown) {
+			$0.continuations.continuations.isShown = true
+		}
+		await store.receive(\.continuations.continuations.loaded.success) {
+			$0.continuations.continuations.hasLoaded = true
 		}
 		await store.skipInFlightEffects()
 	}

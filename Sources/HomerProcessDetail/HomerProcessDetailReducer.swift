@@ -496,7 +496,11 @@ public struct HomerProcessDetailReducer: Sendable {
 			return .none
 
 		case .browseArtifactsTapped:
-			state.artifacts = HomerArtifactsReducer.State(baseURL: state.baseURL, processId: state.processId)
+			state.artifacts = HomerArtifactsReducer.State(
+				baseURL: state.baseURL,
+				processId: state.processId,
+				retainArtifacts: state.process?.retainArtifacts ?? []
+			)
 			return .none
 
 		case .killTapped:

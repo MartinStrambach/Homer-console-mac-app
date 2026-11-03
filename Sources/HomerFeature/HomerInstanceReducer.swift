@@ -112,6 +112,10 @@ public struct HomerInstanceReducer: Sendable {
 		public internal(set) var isSettingMaintenance = false
 		/// The server's Homer version (`/heartbeat`), read once.
 		public internal(set) var homerVersion: String?
+		/// For an admin: when the server started and its newest run (`GET /status`), read with
+		/// each `/health` poll, and when it was read — the uptime runs on from there.
+		public internal(set) var serverStatus: HomerServerStatus?
+		var serverStatusReadAt: Date?
 
 		// Continuations
 		/// The Continuations page's badge: how many continuations wait for their watched run.
@@ -135,6 +139,15 @@ public struct HomerInstanceReducer: Sendable {
 		@Presents
 		public var processDetail: HomerProcessDetailReducer.State?
 		public internal(set) var processDetailOpenedFrom: HomerConsoleReducer.Tab = .processes
+
+		/// How long the server has been up at `date`, from the last `/status` read; nil until an
+		/// admin's read.
+		public func serverUptime(at date: Date) -> TimeInterval? {
+			guard let serverStatus, let serverStatusReadAt else {
+				return nil
+			}
+			return serverStatus.uptime + max(0, date.timeIntervalSince(serverStatusReadAt))
+		}
 
 		/// Whether this instance is the one on screen. Its processes are polled only then; the
 		/// questions of every signed-in instance always, for the badges.
@@ -295,6 +308,7 @@ public struct HomerInstanceReducer: Sendable {
 
 		case healthLoaded(HomerHealth)
 		case versionLoaded(String)
+		case serverStatusLoaded(HomerServerStatus)
 		/// An admin's account menu or the banner's Turn Off: asks first, then turns the mode the
 		/// other way.
 		case maintenanceToggleTapped
@@ -342,6 +356,12 @@ public struct HomerInstanceReducer: Sendable {
 
 	@Dependency(HomerMaintenanceClient.self)
 	private var maintenanceClient
+
+	@Dependency(HomerServerStatusClient.self)
+	private var serverStatusClient
+
+	@Dependency(\.date.now)
+	private var now
 
 	@Dependency(\.continuousClock)
 	private var clock
@@ -556,6 +576,8 @@ public struct HomerInstanceReducer: Sendable {
 
 			case let .agentNamesLoaded(.success(names)):
 				state.agentNames = names
+				// The Continuations page's agent filter offers them too.
+				state.continuations.agentNames = names
 				return .none
 
 			case .agentNamesLoaded(.failure):
@@ -973,6 +995,15 @@ public struct HomerInstanceReducer: Sendable {
 				}
 				return .none
 
+			case let .serverStatusLoaded(status):
+				// One asked for before signing out (or before another user signed in) lands late.
+				guard state.user?.isAdmin == true else {
+					return .none
+				}
+				state.serverStatus = status
+				state.serverStatusReadAt = now
+				return .none
+
 			case let .versionLoaded(version):
 				state.homerVersion = version
 				return .none
@@ -1000,6 +1031,8 @@ public struct HomerInstanceReducer: Sendable {
 					return .send(.processTapped(processId: processId))
 				case .continuationsChanged:
 					return state.isActive && state.user != nil ? pollPendingContinuationCount(state) : .none
+				case .questionsChanged:
+					return state.user != nil ? .merge(pollQuestions(state), pollRunQuestions(state)) : .none
 				}
 
 			case let .pendingContinuationCountLoaded(count):
@@ -1246,11 +1279,17 @@ public struct HomerInstanceReducer: Sendable {
 	/// `/health` is read while the instance is on screen, whatever its page: the maintenance
 	/// banner shows above every page, as the console's does above every dashboard page. A failure
 	/// keeps the last answer: the banners have nowhere to say why.
+	/// `/health`, and for an admin `/status` with it: the account menu's uptime and newest run
+	/// stay current, and a server restart shows within one poll. A failure of either is silent.
 	private func pollHealth(_ state: State) -> Effect<Action> {
-		.run { [baseURL = state.baseURL] send in
+		.run { [baseURL = state.baseURL, isAdmin = state.user?.isAdmin == true] send in
 			while true {
 				if let health = try? await homerClient.health(baseURL) {
 					await send(.healthLoaded(health))
+				}
+				// Anyone else gets 403.
+				if isAdmin, let status = try? await serverStatusClient.status(baseURL) {
+					await send(.serverStatusLoaded(status))
 				}
 				try await clock.sleep(for: Self.healthPollInterval)
 			}
@@ -1453,6 +1492,8 @@ public struct HomerInstanceReducer: Sendable {
 		state.maintenanceDetail = nil
 		state.isSettingMaintenance = false
 		state.pendingContinuations = nil
+		state.serverStatus = nil
+		state.serverStatusReadAt = nil
 		state.webPage = nil
 		state.processDetail = nil
 		return shownChildPage

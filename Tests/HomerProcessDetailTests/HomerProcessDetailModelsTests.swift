@@ -172,6 +172,38 @@ struct HomerProcessDetailModelsTests {
 	}
 }
 
+@Suite("Retained artifact globs")
+struct HomerArtifactGlobTests {
+	private func matches(_ glob: String, _ path: String) -> Bool {
+		HomerArtifactGlob(glob)?.matches(path) == true
+	}
+
+	@Test("star and question mark stay within a segment; a double star crosses them")
+	func wildcards() {
+		#expect(matches("*.json", "result.json"))
+		#expect(!matches("*.json", "reports/result.json"))
+		#expect(matches("**.json", "reports/result.json"))
+		#expect(matches("reports/**", "reports/a/b.txt"))
+		#expect(!matches("reports/**", "logs/a.txt"))
+		#expect(matches("report?.txt", "report1.txt"))
+		#expect(!matches("report?.txt", "report/.txt"))
+		#expect(matches("a.b", "a.b"))
+		#expect(!matches("a.b", "axb"))
+	}
+
+	@Test("groups and classes match as Java's glob does; a malformed glob matches nothing")
+	func groupsAndClasses() {
+		#expect(matches("*.{json,md}", "notes.md"))
+		#expect(!matches("*.{json,md}", "notes.txt"))
+		#expect(matches("run[0-9].log", "run7.log"))
+		#expect(!matches("run[!0-9].log", "run7.log"))
+		#expect(matches("run[!0-9].log", "runx.log"))
+		#expect(HomerArtifactGlob("*.{json") == nil)
+		#expect(HomerArtifactGlob("run[0-9.log") == nil)
+		#expect(HomerArtifactGlob("{a,{b}}") == nil)
+	}
+}
+
 @Suite("LLM harness conversation")
 struct HomerLLMConversationTests {
 	private func event(_ json: String) throws -> HomerLLMEvent {

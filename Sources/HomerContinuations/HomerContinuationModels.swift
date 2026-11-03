@@ -3,8 +3,7 @@ import HomerCore
 
 // Mirrors of the Homer API's continuation JSON (`Continuation` in `console/types/homer.ts`,
 // `ContinuationResponse` in the backend's `ContinuationModels.kt`). As in `HomerModels.swift`,
-// only what the page shows is decoded — not `resumeParam` or the (redacted) `params` — and
-// timestamps are Unix epoch seconds.
+// only what the page shows is decoded, and timestamps are Unix epoch seconds.
 
 /// Where a completion continuation is in its life (`ContinuationStatus`). Unknown values (a
 /// newer server) decode as `.unknown` rather than failing the whole list.
@@ -41,6 +40,10 @@ public nonisolated enum HomerContinuationStatus: String, CaseIterable, Sendable,
 			"Unknown"
 		}
 	}
+
+	/// The statuses the list's `status` filter offers, in the order a continuation goes through
+	/// them.
+	public static let filterable: [Self] = [.pending, .dispatching, .dispatched, .failed, .cancelled, .expired]
 }
 
 /// A parked workflow: when the watched run finishes, the server starts `agentName`.
@@ -60,6 +63,10 @@ public nonisolated struct HomerContinuation: Equatable, Sendable, Identifiable, 
 	public var firedProcessId: Int?
 	/// Why it failed to fire.
 	public var error: String?
+	/// The input of the started agent that gets the watched run's result.
+	public var resumeParam: String?
+	/// The other inputs it starts the agent with, secrets masked by the server.
+	public var params: [String: String]?
 
 	public init(
 		id: Int,
@@ -72,7 +79,9 @@ public nonisolated struct HomerContinuation: Equatable, Sendable, Identifiable, 
 		createdAt: Double,
 		firedAt: Double? = nil,
 		firedProcessId: Int? = nil,
-		error: String? = nil
+		error: String? = nil,
+		resumeParam: String? = nil,
+		params: [String: String]? = nil
 	) {
 		self.id = id
 		self.watchedProcessId = watchedProcessId
@@ -85,6 +94,8 @@ public nonisolated struct HomerContinuation: Equatable, Sendable, Identifiable, 
 		self.firedAt = firedAt
 		self.firedProcessId = firedProcessId
 		self.error = error
+		self.resumeParam = resumeParam
+		self.params = params
 	}
 
 	/// Only a pending continuation can be cancelled; the server answers 409 for any other.

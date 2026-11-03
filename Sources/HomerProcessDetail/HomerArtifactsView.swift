@@ -122,6 +122,7 @@ struct HomerArtifactsView: View {
 
 	private func row(_ artifact: HomerArtifact) -> some View {
 		HStack(spacing: 6) {
+			let globs = store.retainArtifacts.compactMap(HomerArtifactGlob.init)
 			Button {
 				store.send(.downloadTapped(path: artifact.path))
 			} label: {
@@ -152,6 +153,11 @@ struct HomerArtifactsView: View {
 				Image(systemName: "exclamationmark.triangle.fill")
 					.foregroundStyle(.red)
 					.help(error)
+			}
+
+			if globs.contains(where: { $0.matches(artifact.path) }) {
+				HomerPill("Kept", color: .teal, systemImage: "archivebox")
+					.help("Matches the run's retained artifacts: it survives the workspace purge")
 			}
 		}
 	}

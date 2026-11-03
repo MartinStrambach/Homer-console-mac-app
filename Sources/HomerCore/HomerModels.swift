@@ -54,6 +54,10 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		/// The command's type: `cmd`, `script`, `claude`, `codex`, `opencode`, `agent`,
 		/// `langgraph`, `runnerCmd`; empty for older rows, nil from an older server.
 		public var kind: String?
+		/// The command's stdout or stderr passed the server's `maxOutputBytes`, which killed it:
+		/// the file ends at the cap. Homer's `ExecutionInfo` has the flag, but its API response
+		/// does not send it yet — decoded when present.
+		public var outputTruncated: Bool?
 		/// How an LLM harness command's spend was priced; nil for any other command.
 		public var llmAccounting: HomerLLMAccounting?
 
@@ -67,6 +71,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			stdErr: String? = nil,
 			errMsg: String? = nil,
 			kind: String? = nil,
+			outputTruncated: Bool? = nil,
 			llmAccounting: HomerLLMAccounting? = nil
 		) {
 			self.label = label
@@ -78,6 +83,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 			self.stdErr = stdErr
 			self.errMsg = errMsg
 			self.kind = kind
+			self.outputTruncated = outputTruncated
 			self.llmAccounting = llmAccounting
 		}
 	}
@@ -185,6 +191,17 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	/// parallel-run cap or a full queue (Homer 1.38). A sentence the server builds, shown as
 	/// plain text; nil for every other run, and from an older server.
 	public var failureReason: String?
+	/// The run that blocked this one — the lock holder named in `failureReason`. Homer stores it
+	/// as `failureReasonRunId` but sends it only inside the sentence, as " (run #N)", and only to
+	/// someone who may open that run: `blockingRunId` reads either.
+	public var failureReasonRunId: Int?
+	/// The artifact globs that survive the workspace purge (`workspace.retain.artifacts`,
+	/// ADR-0053), captured when the run ended. Homer keeps them on the run but does not send
+	/// them yet — decoded when present.
+	public var retainArtifacts: [String]?
+	/// Whether the server's `maxRetainedArtifactBytes` cut the retained files short at the purge;
+	/// nil until the purge has run, or when nothing is retained.
+	public var retainedTruncated: Bool?
 
 	public init(
 		id: Int,
@@ -206,7 +223,10 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		rootProcessId: Int? = nil,
 		tags: [String]? = nil,
 		langfuseTraceUrl: String? = nil,
-		failureReason: String? = nil
+		failureReason: String? = nil,
+		failureReasonRunId: Int? = nil,
+		retainArtifacts: [String]? = nil,
+		retainedTruncated: Bool? = nil
 	) {
 		self.id = id
 		self.status = status
@@ -228,6 +248,9 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		self.tags = tags
 		self.langfuseTraceUrl = langfuseTraceUrl
 		self.failureReason = failureReason
+		self.failureReasonRunId = failureReasonRunId
+		self.retainArtifacts = retainArtifacts
+		self.retainedTruncated = retainedTruncated
 	}
 
 	public init(from decoder: any Decoder) throws {
@@ -253,13 +276,43 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		tags = try container.decodeIfPresent([String].self, forKey: .tags)
 		langfuseTraceUrl = try container.decodeIfPresent(String.self, forKey: .langfuseTraceUrl)
 		failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
+		failureReasonRunId = try container.decodeIfPresent(Int.self, forKey: .failureReasonRunId)
+		retainArtifacts = try container.decodeIfPresent([String].self, forKey: .retainArtifacts)
+		retainedTruncated = try container.decodeIfPresent(Bool.self, forKey: .retainedTruncated)
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case id, status, agentName, group, owner, history, executions, currentCommand, currentCommandStart
 		case currentCommandKind
 		case purgeAt, runner, openQuestions, costUsd, costSource, parentProcessId, rootProcessId, tags
-		case langfuseTraceUrl, failureReason
+		case langfuseTraceUrl, failureReason, failureReasonRunId, retainArtifacts, retainedTruncated
+	}
+
+	/// The run that blocked this one from starting (a lock holder): `failureReasonRunId`, or the
+	/// " (run #N)" the server appends to `failureReason`. Nil when the reason names no run, or
+	/// names one the user may not open.
+	public var blockingRunId: Int? {
+		failureReasonRunId ?? failureReason.flatMap { Self.blockingRunSuffix(in: $0)?.runId }
+	}
+
+	/// `failureReason` without the " (run #N)" that names the blocking run, which the page shows
+	/// as a link of its own.
+	public var failureReasonSentence: String? {
+		guard let failureReason else {
+			return nil
+		}
+		guard let suffix = Self.blockingRunSuffix(in: failureReason) else {
+			return failureReason
+		}
+		return String(failureReason[..<suffix.range.lowerBound])
+	}
+
+	/// The " (run #N)" `ResponseMapping.kt` appends to a failure reason, at its very end.
+	private static func blockingRunSuffix(in reason: String) -> (runId: Int, range: Range<String.Index>)? {
+		guard let match = reason.firstMatch(of: /\s*\(run #(\d+)\)$/), let runId = Int(match.1) else {
+			return nil
+		}
+		return (runId, match.range)
 	}
 
 	/// A run a cron tick started, or one of its sub-runs: the scheduler stamps its runs' owner

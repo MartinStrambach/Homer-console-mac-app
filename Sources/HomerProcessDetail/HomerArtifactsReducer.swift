@@ -10,6 +10,9 @@ public struct HomerArtifactsReducer: Sendable {
 	public struct State: Equatable {
 		public let baseURL: String
 		public let processId: Int
+		/// The run's `workspace.retain.artifacts` globs: the files matching them survive the
+		/// workspace purge, and say so.
+		public let retainArtifacts: [String]
 		public internal(set) var artifacts: [HomerArtifact] = []
 		public internal(set) var isLoading = false
 		public internal(set) var hasLoaded = false
@@ -19,9 +22,10 @@ public struct HomerArtifactsReducer: Sendable {
 		public internal(set) var savedFiles: [String: URL] = [:]
 		public internal(set) var downloadErrors: [String: String] = [:]
 
-		public init(baseURL: String, processId: Int) {
+		public init(baseURL: String, processId: Int, retainArtifacts: [String] = []) {
 			self.baseURL = baseURL
 			self.processId = processId
+			self.retainArtifacts = retainArtifacts
 		}
 	}
 

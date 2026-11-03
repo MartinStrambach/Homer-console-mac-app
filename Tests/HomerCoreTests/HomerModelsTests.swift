@@ -239,4 +239,46 @@ struct HomerModelsTests {
 		#expect(page.questions.map(\.id) == ["q-1"])
 		#expect(page.total == 140)
 	}
+
+	@Test("the run that blocked a run is read from the reason's suffix, or from its own field")
+	func blockingRun() throws {
+		let json = """
+			{ "id": 9, "status": "FAILED", "agentName": "deploy", "history": [], "executions": [],
+			  "failureReason": "Skipped: another run held the workspace lock (run #4596)" }
+			"""
+		let process = try JSONDecoder().decode(HomerProcess.self, from: Data(json.utf8))
+
+		#expect(process.blockingRunId == 4596)
+		#expect(process.failureReasonSentence == "Skipped: another run held the workspace lock")
+
+		// Withheld from someone who may not open that run: the sentence alone.
+		let hidden = HomerProcess(id: 9, status: .failed, agentName: "deploy", failureReason: "Skipped: another run held the workspace lock")
+		#expect(hidden.blockingRunId == nil)
+		#expect(hidden.failureReasonSentence == "Skipped: another run held the workspace lock")
+
+		// A run number elsewhere in the sentence is not the suffix.
+		let inside = HomerProcess(id: 9, status: .failed, agentName: "deploy", failureReason: "Claim timed out (run #3 waited) after 300 s")
+		#expect(inside.blockingRunId == nil)
+
+		let field = HomerProcess(id: 9, status: .failed, agentName: "deploy", failureReason: "Skipped", failureReasonRunId: 12)
+		#expect(field.blockingRunId == 12)
+		#expect(HomerProcess(id: 9, status: .failed, agentName: "deploy").failureReasonSentence == nil)
+	}
+
+	@Test("retained artifacts and truncated output decode when the server sends them, and are absent otherwise")
+	func retentionAndTruncation() throws {
+		let json = """
+			{ "id": 9, "status": "FINISHED", "agentName": "deploy", "history": [],
+			  "retainArtifacts": ["reports/**", "*.json"], "retainedTruncated": true,
+			  "executions": [
+			    { "label": "build", "start": 1, "end": 2, "resultCode": 137, "outputTruncated": true },
+			    { "label": "test", "start": 2, "end": 3, "resultCode": 0 }
+			  ] }
+			"""
+		let process = try JSONDecoder().decode(HomerProcess.self, from: Data(json.utf8))
+
+		#expect(process.retainArtifacts == ["reports/**", "*.json"])
+		#expect(process.retainedTruncated == true)
+		#expect(process.executions.map(\.outputTruncated) == [true, nil])
+	}
 }
