@@ -172,69 +172,105 @@ struct HomerProcessDetailModelsTests {
 	}
 }
 
-@Suite("Claude conversation transcript")
-struct HomerClaudeTranscriptTests {
-	private let lines = [
-		#"{"type":"system","subtype":"hook_started"}"#,
-		#"{"type":"system","subtype":"init","model":"claude-opus-5-5"}"#,
-		#"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Looking."}],"usage":{"input_tokens":10,"output_tokens":2}}}"#,
-		#"{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":12,"output_tokens":5}}}"#,
-		#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"a.txt"}]}]}}"#,
-		#"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Done."}]}}"#,
-		#"{"type":"result","subtype":"success","is_error":false,"duration_ms":4200,"duration_api_ms":3100,"num_turns":2,"total_cost_usd":0.0123,"result":"Done.","usage":{"input_tokens":20,"output_tokens":9,"cache_read_input_tokens":100,"cache_creation_input_tokens":0}}"#,
-	]
+@Suite("LLM harness conversation")
+struct HomerLLMConversationTests {
+	private func event(_ json: String) throws -> HomerLLMEvent {
+		try #require(HomerLLMEvent(frame: #"{"processId":7,"cmdIndex":1,"attemptIndex":0,"event":"# + json + "}"))
+	}
 
-	@Test("stream-json reads as messages and tool calls with their results")
-	func parses() {
-		let transcript = HomerClaudeTranscript(parsing: lines.joined(separator: "\n") + "\n")
+	@Test("every kind of event decodes from its frame; an unknown kind is ignored")
+	func decodesEvents() throws {
+		#expect(try event(#"{"type":"session_start","sessionId":"s1","model":"gpt-5.5","tools":["shell"]}"#) == .sessionStart(model: "gpt-5.5"))
+		#expect(try event(#"{"type":"assistant_message","messageId":"m1","model":null,"text":"Looking.","subagent":false}"#)
+			== .assistantMessage(messageID: "m1", text: "Looking."))
+		#expect(try event(#"{"type":"tool_call","id":"t1","name":"shell","input":{"command":"ls"},"messageId":"m1"}"#)
+			== .toolCall(.init(id: "t1", name: "shell", input: "{\n  \"command\" : \"ls\"\n}", inputPreview: #"{"command":"ls"}"#, messageID: "m1")))
+		#expect(try event(#"{"type":"tool_result","id":"t1","output":"a.txt","isError":true}"#) == .toolResult(id: "t1", output: "a.txt", isError: true))
+		#expect(try event(#"{"type":"transient_error","message":"overloaded"}"#) == .other)
+		#expect(try event(#"{"type":"something_new"}"#) == .other)
+		#expect(HomerLLMEvent(frame: "not json") == nil)
 
-		#expect(transcript.isClaude)
-		#expect(transcript.model == "claude-opus-5-5")
-		#expect(transcript.turns == 2)
-		#expect(transcript.items.map(\.id) == ["message-0", "tool-t1", "message-2"])
-		guard case let .tool(tool) = transcript.items[1] else {
-			Issue.record("expected a tool call")
+		let turnEnd = try event(#"""
+			{"type":"turn_end","status":{"type":"stopped","reason":"max turns"},
+			 "usage":{"input":20,"output":9,"cacheRead":100,"cacheWrite":0,"reasoning":7},
+			 "costUsd":null,"model":"gpt-5.5","durationMs":4200,"durationApiMs":null,"numTurns":2,"resultText":"Done."}
+			"""#)
+		#expect(turnEnd == .turnEnd(.init(
+			status: .stopped(reason: "max turns"),
+			usage: .init(input: 20, output: 9, cacheRead: 100, reasoning: 7),
+			costUsd: nil,
+			model: "gpt-5.5",
+			durationMs: 4200,
+			turns: 2
+		)))
+	}
+
+	@Test("messages and tool calls in order, each call with its result; turns by message id")
+	func conversation() {
+		let conversation = HomerLLMConversation([
+			.sessionStart(model: nil),
+			.sessionStart(model: "claude-opus-5-5"),
+			.assistantMessage(messageID: "m1", text: "Looking."),
+			.toolCall(.init(id: "t1", name: "Bash", input: "{}", inputPreview: "{}", messageID: "m1")),
+			.toolResult(id: "t1", output: "a.txt", isError: false),
+			// Thinking only: no row, but a turn.
+			.assistantMessage(messageID: "m2", text: "  "),
+			.assistantMessage(messageID: "m3", text: "Done."),
+			.turnEnd(.init(status: .success, model: "claude-opus-5-5-20261101")),
+			.turnEnd(.init(status: .failed(reason: "late"))),
+		])
+
+		#expect(conversation.items.map(\.id) == ["message-0", "tool-t1", "message-2"])
+		guard case let .tool(_, result) = conversation.items[1] else {
+			Issue.record("expected the tool call")
 			return
 		}
-		#expect(tool.name == "Bash")
-		#expect(tool.inputPreview == #"{"command":"ls"}"#)
-		#expect(tool.result == "a.txt")
-		#expect(transcript.lastMessageIndex == 2)
-		#expect(transcript.inflightToolID == nil)
-		#expect(transcript.outcome?.costUsd == 0.0123)
-		#expect(transcript.outcome?.cacheReadTokens == 100)
-		#expect(transcript.outcome?.turns == 2)
+		#expect(result?.output == "a.txt")
+		#expect(conversation.turns == 3)
+		#expect(conversation.lastMessageIndex == 2)
+		#expect(conversation.inflightToolID == nil)
+		// The first turn_end is the outcome, and its model wins over the session's.
+		#expect(conversation.outcome?.status == .success)
+		#expect(conversation.model == "claude-opus-5-5-20261101")
 	}
 
-	@Test("appending in pieces, mid-line included, ends where parsing it whole does")
-	func appendsInPieces() {
-		let text = lines.joined(separator: "\n") + "\n"
-		var transcript = HomerClaudeTranscript()
-		var rest = Substring(text)
-		while !rest.isEmpty {
-			let piece = rest.prefix(37)
-			transcript.append(String(piece))
-			rest = rest.dropFirst(piece.count)
+	@Test("a call without a result is in flight; a result before its call still lands on it")
+	func inflightAndEarlyResult() {
+		var conversation = HomerLLMConversation([
+			.toolResult(id: "t2", output: "early", isError: false),
+			.toolCall(.init(id: "t1", name: "Read", input: "{}", inputPreview: "{}")),
+		])
+		#expect(conversation.inflightToolID == "t1")
+		#expect(conversation.outcome == nil)
+
+		conversation.apply(.toolCall(.init(id: "t2", name: "Grep", input: "{}", inputPreview: "{}")))
+		guard case let .tool(_, result) = conversation.items[1] else {
+			Issue.record("expected the tool call")
+			return
 		}
-
-		#expect(transcript == HomerClaudeTranscript(parsing: text))
+		#expect(result?.output == "early")
+		#expect(conversation.inflightToolID == "t1")
 	}
 
-	@Test("a tool call without a result yet is in flight; the running usage is the latest")
-	func live() {
-		let transcript = HomerClaudeTranscript(parsing: lines.prefix(4).joined(separator: "\n"))
-
-		#expect(transcript.inflightToolID == "t1")
-		#expect(transcript.outcome == nil)
-		#expect(transcript.runningUsage?.input == 12)
-		#expect(transcript.runningUsage?.output == 5)
+	@Test("a cursor follows its attempt; a replayed event and a new attempt are told apart")
+	func cursorPlacement() throws {
+		let last = try #require(HomerLLMCursor("1:0:1702:1"))
+		#expect(try #require(HomerLLMCursor("1:0:1702:2")).placement(after: last) == .next)
+		#expect(try #require(HomerLLMCursor("1:0:2000:0")).placement(after: last) == .next)
+		#expect(try #require(HomerLLMCursor("1:0:1702:1")).placement(after: last) == .replay)
+		#expect(try #require(HomerLLMCursor("1:0:10:0")).placement(after: last) == .replay)
+		#expect(try #require(HomerLLMCursor("1:1:0:0")).placement(after: last) == .newAttempt)
+		#expect(try #require(HomerLLMCursor("1:0:0:0")).placement(after: nil) == .next)
+		#expect(HomerLLMCursor("1702") == nil)
+		#expect(HomerLLMCursor(nil) == nil)
 	}
 
-	@Test("output without Claude's init event is not a conversation")
-	func notClaude() {
-		let transcript = HomerClaudeTranscript(parsing: "Compiling…\nBuild succeeded\n")
-
-		#expect(!transcript.isClaude)
-		#expect(transcript.items.isEmpty)
+	@Test("a command's kind names its harness")
+	func harness() {
+		#expect(HomerLLMHarness(kind: "codex") == .codex)
+		#expect(HomerLLMHarness(kind: "opencode")?.title == "opencode")
+		#expect(HomerLLMHarness(kind: "script") == nil)
+		#expect(HomerLLMHarness(kind: "") == nil)
+		#expect(HomerLLMHarness(kind: nil) == nil)
 	}
 }

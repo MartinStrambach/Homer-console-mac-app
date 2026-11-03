@@ -25,6 +25,13 @@ public struct HomerProcessDetailClient: Sendable {
 		_ stream: HomerOutputStream,
 		_ offset: Int
 	) -> AsyncThrowingStream<HomerLogEvent, any Error> = { _, _, _, _, _ in .finished() }
+	/// Follows an LLM harness command's conversation, after the event with the given id.
+	public var llmEvents: @Sendable (
+		_ baseURL: String,
+		_ processId: Int,
+		_ executionIndex: Int,
+		_ lastEventID: String?
+	) -> AsyncThrowingStream<HomerLLMStreamEvent, any Error> = { _, _, _, _ in .finished() }
 	/// Saves an artifact to the Downloads folder, as the console's browser download does, shows
 	/// it in Finder and returns where it went.
 	public var downloadArtifact: @Sendable (_ baseURL: String, _ processId: Int, _ path: String) async throws -> URL
@@ -41,6 +48,9 @@ extension HomerProcessDetailClient: DependencyKey {
 		artifactContent: { try await HomerAPI.artifactContent(baseURL: $0, processId: $1, path: $2) },
 		logEvents: {
 			HomerAPI.logEvents(baseURL: $0, processId: $1, executionIndex: $2, stream: $3, offset: $4)
+		},
+		llmEvents: {
+			HomerAPI.llmEvents(baseURL: $0, processId: $1, executionIndex: $2, after: $3)
 		},
 		downloadArtifact: { baseURL, processId, path in
 			let (data, _) = try await HomerAPI.artifact(baseURL: baseURL, processId: processId, path: path)

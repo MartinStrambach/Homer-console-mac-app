@@ -5,7 +5,8 @@ import HomerUI
 import SwiftUI
 
 /// One command's output in a sheet over the process page (`view-artifact-dialog.tsx`):
-/// stdout or stderr, a Claude command's stdout as the conversation or raw, live while it runs.
+/// stdout or stderr, an LLM harness command's stdout as the conversation or raw, live while it
+/// runs.
 struct HomerProcessOutputView: View {
 	@Bindable
 	var store: StoreOf<HomerProcessOutputReducer>
@@ -43,22 +44,22 @@ struct HomerProcessOutputView: View {
 					.scaledFont(.callout, design: .monospaced)
 					.foregroundStyle(.secondary)
 			}
-			if store.output.hasLoaded, !store.output.isComplete {
+			if isLive {
 				HomerLiveBadge()
 			}
-			if store.output.isLoading {
+			if isLoading {
 				ProgressView()
 					.controlSize(.small)
 			}
 
 			Spacer()
 
-			if store.output.transcript.isClaude {
+			if store.offersConversation, let harness = store.harness {
 				Picker("View", selection: Binding(
 					get: { store.effectiveMode },
 					set: { store.send(.binding(.set(\.mode, $0))) }
 				)) {
-					Text("Claude").tag(HomerProcessOutputReducer.Mode.conversation)
+					Text(harness.title).tag(HomerProcessOutputReducer.Mode.conversation)
 					Text("Raw").tag(HomerProcessOutputReducer.Mode.raw)
 				}
 				.pickerStyle(.segmented)
@@ -72,7 +73,7 @@ struct HomerProcessOutputView: View {
 				Label("Refresh", systemImage: "arrow.clockwise")
 			}
 			.buttonStyle(.scaledBordered)
-			.disabled(store.path == nil || store.output.isLoading)
+			.disabled(!store.showsConversation && (store.path == nil || store.output.isLoading))
 
 			Button("Done") { dismiss() }
 				.buttonStyle(.scaledBorderedProminent)
@@ -81,10 +82,24 @@ struct HomerProcessOutputView: View {
 		.padding(12)
 	}
 
+	private var isLive: Bool {
+		if store.showsConversation {
+			return store.conversation.hasStarted && !store.conversation.hasEnded && store.conversation.error == nil
+		}
+		return store.output.hasLoaded && !store.output.isComplete
+	}
+
+	private var isLoading: Bool {
+		store.showsConversation ? store.conversation.isStreaming && !store.conversation.hasEvents : store.output.isLoading
+	}
+
 	@ViewBuilder
 	private var content: some View {
 		let output = store.output
-		if store.path == nil {
+		if store.showsConversation, let harness = store.harness {
+			conversation(harness)
+		}
+		else if store.path == nil {
 			placeholder("No \(store.stream.title.lowercased()) for this command")
 		}
 		else if !output.hasLoaded {
@@ -104,16 +119,39 @@ struct HomerProcessOutputView: View {
 					placeholder(output.isComplete ? "The file is empty" : "Waiting for output…")
 						.frame(maxHeight: .infinity)
 				}
-				else if store.effectiveMode == .conversation, output.transcript.isClaude {
-					HomerClaudeTranscriptView(
-						transcript: output.transcript,
-						isLive: !output.isComplete,
-						commandStart: store.commandStart
-					)
-				}
 				else {
 					HomerLogTextView(text: output.text, followsEnd: !output.isComplete)
 				}
+			}
+		}
+	}
+
+	@ViewBuilder
+	private func conversation(_ harness: HomerLLMHarness) -> some View {
+		let state = store.conversation
+		VStack(spacing: 0) {
+			if let error = state.error, state.hasEvents {
+				HomerErrorBanner(message: error)
+			}
+			if state.hasEvents {
+				HomerLLMConversationView(
+					conversation: state.conversation,
+					harness: harness,
+					isLive: !state.hasEnded,
+					commandStart: store.commandStart
+				)
+			}
+			else if let error = state.error {
+				placeholder(error, isError: true)
+					.frame(maxHeight: .infinity)
+			}
+			else if state.hasEnded {
+				placeholder("No conversation in this command's output — see Raw")
+					.frame(maxHeight: .infinity)
+			}
+			else {
+				ProgressView("Waiting for the conversation…")
+					.frame(maxHeight: .infinity)
 			}
 		}
 	}
@@ -127,16 +165,17 @@ struct HomerProcessOutputView: View {
 	}
 }
 
-// MARK: - Claude conversation
+// MARK: - Conversation
 
-/// A Claude command's stdout as the conversation (`claude-artifact-view.tsx`): a summary of
-/// the run — or, while it runs, a live header — then Claude's messages and tool calls, each
-/// call folded to one line until opened. Only the last message is shown in full.
+/// An LLM harness command's conversation (`llm-conversation-view.tsx`): a summary of the run —
+/// or, while it runs, a live header — then the assistant's messages and tool calls, each call
+/// folded to one line until opened. Only the last message is shown in full.
 ///
 /// A `List`, not a lazy stack in a scroll view: a long conversation inside a sheet would hand
 /// the sheet an ever-changing ideal height (README, Sheets).
-struct HomerClaudeTranscriptView: View {
-	let transcript: HomerClaudeTranscript
+struct HomerLLMConversationView: View {
+	let conversation: HomerLLMConversation
+	let harness: HomerLLMHarness
 	let isLive: Bool
 	let commandStart: Double?
 
@@ -146,7 +185,7 @@ struct HomerClaudeTranscriptView: View {
 		ScrollViewReader { proxy in
 			List {
 				Group {
-					if isLive, transcript.outcome == nil {
+					if isLive, conversation.outcome == nil {
 						liveHeader
 					}
 					else {
@@ -155,8 +194,8 @@ struct HomerClaudeTranscriptView: View {
 				}
 				.listRowSeparator(.hidden)
 
-				ForEach(Array(transcript.items.enumerated()), id: \.element.id) { index, item in
-					row(item, isLastMessage: index == transcript.lastMessageIndex)
+				ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
+					row(item, isLastMessage: index == conversation.lastMessageIndex)
 						.listRowSeparator(.hidden)
 				}
 
@@ -166,7 +205,7 @@ struct HomerClaudeTranscriptView: View {
 					.listRowSeparator(.hidden)
 			}
 			.listStyle(.plain)
-			.onChange(of: transcript.items.count) {
+			.onChange(of: conversation.items.count) {
 				if isLive {
 					proxy.scrollTo(Self.bottomID, anchor: .bottom)
 				}
@@ -175,12 +214,12 @@ struct HomerClaudeTranscriptView: View {
 	}
 
 	@ViewBuilder
-	private func row(_ item: HomerClaudeTranscript.Item, isLastMessage: Bool) -> some View {
+	private func row(_ item: HomerLLMConversation.Item, isLastMessage: Bool) -> some View {
 		switch item {
 		case let .message(_, text):
 			if isLastMessage {
 				VStack(alignment: .leading, spacing: 4) {
-					Text("Claude")
+					Text(harness.title)
 						.scaledFont(.caption)
 						.fontWeight(.medium)
 						.foregroundStyle(.secondary)
@@ -193,7 +232,7 @@ struct HomerClaudeTranscriptView: View {
 			}
 			else {
 				HomerTranscriptBlock(
-					title: "Claude message",
+					title: "\(harness.title) message",
 					titleColor: .secondary,
 					preview: String(text.prefix(100)),
 					isRunning: false
@@ -201,23 +240,23 @@ struct HomerClaudeTranscriptView: View {
 					blockText(text, color: .primary)
 				}
 			}
-		case let .tool(tool):
+		case let .tool(tool, result):
 			HomerTranscriptBlock(
 				title: tool.name,
 				titleColor: .blue,
 				preview: tool.inputPreview,
-				isRunning: isLive && tool.id == transcript.inflightToolID
+				isRunning: isLive && tool.id == conversation.inflightToolID
 			) {
 				VStack(alignment: .leading, spacing: 8) {
 					VStack(alignment: .leading, spacing: 4) {
 						caption("Input")
 						blockText(tool.input, color: .primary)
 					}
-					if let result = tool.result {
+					if let result {
 						Divider()
 						VStack(alignment: .leading, spacing: 4) {
-							caption("Result")
-							blockText(result, color: .green)
+							caption(result.isError ? "Error" : "Result")
+							blockText(result.output, color: result.isError ? .red : .green)
 						}
 					}
 				}
@@ -245,20 +284,25 @@ struct HomerClaudeTranscriptView: View {
 
 	private var summary: some View {
 		HomerFlowLayout(spacing: 16) {
-			if let model = transcript.model {
+			if let model = conversation.model {
 				Text(model)
 					.scaledFont(.caption, design: .monospaced)
 					.foregroundStyle(.secondary)
 			}
-			if let outcome = transcript.outcome {
-				HomerPill(outcome.isError ? "error" : "success", color: outcome.isError ? .red : .green)
-				metric("cost", HomerFormat.cost(outcome.costUsd))
-				metric("tokens", Self.tokens(outcome))
-				metric(
-					"duration",
-					"\(Self.seconds(outcome.durationMs)) (api \(Self.seconds(outcome.apiDurationMs)))"
-				)
-				metric("turns", "\(outcome.turns)")
+			if let outcome = conversation.outcome {
+				status(outcome.status)
+				// Codex and opencode report tokens only; the server prices them in the run's cost.
+				metric("cost", outcome.costUsd.map(HomerFormat.cost) ?? "—")
+				metric("tokens", Self.tokens(outcome.usage))
+				if let duration = outcome.durationMs {
+					metric(
+						"duration",
+						Self.seconds(duration) + (outcome.apiDurationMs.map { " (api \(Self.seconds($0)))" } ?? "")
+					)
+				}
+				if let turns = outcome.turns {
+					metric("turns", "\(turns)")
+				}
 			}
 		}
 		.padding(10)
@@ -266,26 +310,47 @@ struct HomerClaudeTranscriptView: View {
 		.homerInset()
 	}
 
+	@ViewBuilder
+	private func status(_ status: HomerLLMEvent.TurnEnd.Status) -> some View {
+		switch status {
+		case .success:
+			HomerPill("success", color: .green)
+		case let .failed(reason):
+			HomerPill("failed", color: .red)
+			reasonText(reason)
+		case let .stopped(reason):
+			// A stop the agent may have asked for, such as a turn limit: not a failure.
+			HomerPill("stopped", color: .gray)
+			reasonText(reason)
+		}
+	}
+
+	@ViewBuilder
+	private func reasonText(_ reason: String) -> some View {
+		if !reason.isEmpty {
+			Text(reason)
+				.scaledFont(.caption)
+				.foregroundStyle(.secondary)
+		}
+	}
+
 	private var liveHeader: some View {
 		TimelineView(.periodic(from: .now, by: 1)) { context in
 			HomerFlowLayout(spacing: 16) {
 				HomerLiveBadge()
-				if let model = transcript.model {
+				if let model = conversation.model {
 					Text(model)
 						.scaledFont(.caption, design: .monospaced)
 						.foregroundStyle(.secondary)
 				}
-				if transcript.turns > 0 {
-					Text("turn \(transcript.turns)")
+				if conversation.turns > 0 {
+					Text("turn \(conversation.turns)")
 						.scaledFont(.caption)
 						.fontWeight(.medium)
 				}
 				if let commandStart {
 					let elapsed = max(0, Int(context.date.timeIntervalSince1970) - Int(commandStart))
 					metric("elapsed", String(format: "%d:%02d", elapsed / 60, elapsed % 60))
-				}
-				if let usage = transcript.runningUsage {
-					metric("~", "\(usage.input.formatted()) in / \(usage.output.formatted()) out (running)")
 				}
 			}
 		}
@@ -303,13 +368,16 @@ struct HomerClaudeTranscriptView: View {
 		String(format: "%.1fs", milliseconds / 1000)
 	}
 
-	private static func tokens(_ outcome: HomerClaudeTranscript.Outcome) -> String {
-		var text = "in \(outcome.inputTokens.formatted()) / out \(outcome.outputTokens.formatted())"
-		if outcome.cacheReadTokens > 0 {
-			text += " / cache↑ \(outcome.cacheReadTokens.formatted())"
+	private static func tokens(_ usage: HomerLLMEvent.TurnEnd.Usage) -> String {
+		var text = "in \(usage.input.formatted()) / out \(usage.output.formatted())"
+		if usage.cacheRead > 0 {
+			text += " / cache↑ \(usage.cacheRead.formatted())"
 		}
-		if outcome.cacheCreationTokens > 0 {
-			text += " / cache+ \(outcome.cacheCreationTokens.formatted())"
+		if usage.cacheWrite > 0 {
+			text += " / cache+ \(usage.cacheWrite.formatted())"
+		}
+		if usage.reasoning > 0 {
+			text += " / reasoning \(usage.reasoning.formatted())"
 		}
 		return text
 	}
