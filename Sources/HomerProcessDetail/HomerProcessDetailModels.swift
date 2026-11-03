@@ -60,3 +60,54 @@ public nonisolated enum HomerArtifactPath {
 		"cmd_\(executionIndex).\(stream == .stdout ? "out" : "err")"
 	}
 }
+
+/// A message an operator sent a running run (`RunMessage`, Homer 1.38, ADR-0097): the run reads
+/// its inbox at its next check — a Claude hook, the `check_messages` MCP tool or `homer-inbox`.
+public nonisolated struct HomerRunMessage: Equatable, Sendable, Identifiable, Decodable {
+	public nonisolated enum Status: String, Equatable, Sendable, Decodable {
+		/// Waiting for the run to take it.
+		case queued = "QUEUED"
+		case delivered = "DELIVERED"
+		/// The run ended before it took it.
+		case undelivered = "UNDELIVERED"
+		case unknown
+
+		public init(from decoder: any Decoder) throws {
+			let raw = try decoder.singleValueContainer().decode(String.self)
+			self = Self(rawValue: raw.uppercased()) ?? .unknown
+		}
+	}
+
+	public var id: String
+	public var processId: Int
+	/// The operator's free text, shown as plain text.
+	public var text: String
+	public var status: Status
+	/// Who sent it, e.g. `session:admin`.
+	public var sender: String?
+	public var createdAt: Double
+	public var deliveredAt: Double?
+
+	public init(
+		id: String,
+		processId: Int,
+		text: String,
+		status: Status,
+		sender: String? = nil,
+		createdAt: Double,
+		deliveredAt: Double? = nil
+	) {
+		self.id = id
+		self.processId = processId
+		self.text = text
+		self.status = status
+		self.sender = sender
+		self.createdAt = createdAt
+		self.deliveredAt = deliveredAt
+	}
+}
+
+/// `GET /api/v1/status/{id}/messages`: the run's inbox, oldest first.
+nonisolated struct HomerRunMessageList: Decodable {
+	var messages: [HomerRunMessage]
+}

@@ -40,6 +40,23 @@ struct HomerProcessDetailModelsTests {
 		#expect(process.isResumeEligible)
 	}
 
+	@Test("a run's messages decode, an unknown status included")
+	func decodesRunMessages() throws {
+		let json = """
+			{ "messages": [
+			  { "id": "a1", "processId": 7, "text": "use staging", "status": "DELIVERED",
+			    "sender": "session:admin", "createdAt": 1700000000, "deliveredAt": 1700000030 },
+			  { "id": "a2", "processId": 7, "text": "and hurry", "status": "RECALLED", "createdAt": 1700000040 }
+			] }
+			"""
+		let messages = try JSONDecoder().decode(HomerRunMessageList.self, from: Data(json.utf8)).messages
+
+		#expect(messages.map(\.status) == [.delivered, .unknown])
+		#expect(messages.first?.sender == "session:admin")
+		#expect(messages.first?.deliveredAt == 1_700_000_030)
+		#expect(messages.last?.sender == nil)
+	}
+
 	@Test("artifact paths: an execution's absolute path is cut to its name, a listed one kept")
 	func artifactPaths() {
 		#expect(HomerArtifactPath.apiPath("/tmp/homer/workspace-7/artifacts/cmd_0.out") == "cmd_0.out")

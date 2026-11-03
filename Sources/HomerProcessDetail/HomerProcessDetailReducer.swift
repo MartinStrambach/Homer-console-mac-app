@@ -58,6 +58,15 @@ public struct HomerProcessDetailReducer: Sendable {
 		/// Whether the Flow list shows the root agent's own resume segments, hidden by default.
 		public internal(set) var showsResumeSegments = false
 
+		/// The run's inbox (Homer 1.38), oldest first, read with the run while it can still take
+		/// messages. Nil until read, and from a server without one — the section stays hidden.
+		public internal(set) var messages: [HomerRunMessage]?
+		/// The message being written to the run.
+		public var messageDraft = ""
+		public internal(set) var isSendingMessage = false
+		/// Why the last send failed, in the server's words; the draft stays for another try.
+		public internal(set) var messageError: String?
+
 		/// Kill, retry or resume still waiting on the server.
 		public internal(set) var actionInFlight: Action.ProcessAction?
 		/// Artifacts of the executions' rows being saved.
@@ -122,6 +131,21 @@ public struct HomerProcessDetailReducer: Sendable {
 			process.map { $0.isKillable && user.canKill($0) } ?? false
 		}
 
+		/// Messages go to a run that has not ended, from who may control it — the server's
+		/// `canControl`, the rule Kill follows — on a server with an inbox.
+		public var canSendMessage: Bool {
+			messages != nil && canKill
+		}
+
+		/// The section shows the messages already sent, and the box to send one while that can
+		/// happen (`RunMessagePanel`).
+		public var showsMessages: Bool {
+			guard let messages else {
+				return false
+			}
+			return !messages.isEmpty || canSendMessage
+		}
+
 		public var canRetry: Bool {
 			process.map { $0.isRetryable && user.canRetry($0) } ?? false
 		}
@@ -175,6 +199,9 @@ public struct HomerProcessDetailReducer: Sendable {
 		case langGraphProbed(processId: Int, currentCommand: String?, Result<HomerLangGraphStatus?, any Error>)
 		case workflowLoaded(processId: Int, Result<HomerLangGraphStatus?, any Error>)
 		case relatedRunsLoaded(processId: Int, Result<HomerProcessPage, any Error>)
+		case messagesLoaded(processId: Int, Result<[HomerRunMessage]?, any Error>)
+		case sendMessageTapped
+		case messageSent(processId: Int, Result<HomerRunMessage, any Error>)
 
 		case executionToggled(index: Int)
 		case liveWorkflowToggled
@@ -354,6 +381,56 @@ public struct HomerProcessDetailReducer: Sendable {
 				// A failed read keeps the last list, as the console keeps its last answer.
 			}
 			return .none
+
+		case let .messagesLoaded(processId, result):
+			guard processId == state.processId else {
+				return .none
+			}
+			switch result {
+			case let .success(messages):
+				state.messages = messages
+			case let .failure(error):
+				if error as? HomerAPIError == .unauthorized {
+					return .send(.delegate(.unauthorized))
+				}
+				// A failed read keeps the last list; the next poll asks again.
+			}
+			return .none
+
+		case .sendMessageTapped:
+			let text = state.messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard state.canSendMessage, !state.isSendingMessage, !text.isEmpty else {
+				return .none
+			}
+			state.isSendingMessage = true
+			state.messageError = nil
+			return .run { [baseURL = state.baseURL, processId = state.processId] send in
+				await send(.messageSent(processId: processId, Result {
+					try await client.sendRunMessage(baseURL, processId, text)
+				}))
+			}
+
+		case let .messageSent(processId, result):
+			guard processId == state.processId else {
+				return .none
+			}
+			state.isSendingMessage = false
+			switch result {
+			case let .success(message):
+				state.messageDraft = ""
+				// Shown at once as queued; the poll follows it to delivered.
+				if state.messages?.contains(where: { $0.id == message.id }) == false {
+					state.messages?.append(message)
+				}
+				return .none
+			case let .failure(error):
+				if error as? HomerAPIError == .unauthorized {
+					return .send(.delegate(.unauthorized))
+				}
+				state.messageError = error.localizedDescription
+				// A 409 means the run ended: the next answer shows it, and the box goes.
+				return state.isShown ? poll(state) : .none
+			}
 
 		case .resumeSegmentsToggled:
 			state.showsResumeSegments.toggle()
@@ -553,6 +630,10 @@ public struct HomerProcessDetailReducer: Sendable {
 		state.isPollingWorkflow = false
 		state.relatedRuns = nil
 		state.showsResumeSegments = false
+		state.messages = nil
+		state.messageDraft = ""
+		state.isSendingMessage = false
+		state.messageError = nil
 		state.actionInFlight = nil
 		state.downloadingPaths = []
 		state.output = nil
@@ -567,9 +648,11 @@ public struct HomerProcessDetailReducer: Sendable {
 	}
 
 	/// Fetches the run right away, then every `pollInterval`, and after each answer the runs
-	/// around it — which runs those are depends on the answer. Restarting it replaces the loop.
+	/// around it — which runs those are depends on the answer — and its inbox until that can
+	/// change no more. Restarting it replaces the loop.
 	private func poll(_ state: State) -> Effect<Action> {
 		.run { [baseURL = state.baseURL, processId = state.processId] send in
+			var messagesSettled = false
 			while true {
 				let result = await Result { try await client.process(baseURL, processId) }
 				await send(.processLoaded(processId: processId, result))
@@ -578,11 +661,28 @@ public struct HomerProcessDetailReducer: Sendable {
 					await send(.relatedRunsLoaded(processId: processId, Result {
 						try await homerClient.processes(baseURL, query)
 					}))
+					if !messagesSettled {
+						let messages = await Result { try await client.runMessages(baseURL, processId) }
+						await send(.messagesLoaded(processId: processId, messages))
+						if case let .success(list) = messages {
+							messagesSettled = Self.inboxIsSettled(list, run: process)
+						}
+					}
 				}
 				try await clock.sleep(for: Self.pollInterval)
 			}
 		}
 		.cancellable(id: CancelID.processPolling, cancelInFlight: true)
+	}
+
+	/// An ended run's inbox changes no more once nothing waits in it: the server marks what the
+	/// run never took `UNDELIVERED` when it ends, so one read after that is the last. A server
+	/// without an inbox (nil) never gets one.
+	static func inboxIsSettled(_ messages: [HomerRunMessage]?, run: HomerProcess) -> Bool {
+		guard let messages else {
+			return true
+		}
+		return !run.isKillable && !messages.contains { $0.status == .queued }
 	}
 
 	/// What the page lists under the run (`RelatedRuns` in `page.tsx`): every run of its flow

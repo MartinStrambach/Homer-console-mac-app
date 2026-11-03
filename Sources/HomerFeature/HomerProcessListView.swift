@@ -267,24 +267,14 @@ struct HomerProcessListView: View {
 			.width(min: 140, ideal: 220)
 
 			TableColumn("Status") { process in
-				HStack(spacing: 6) {
-					HomerStatusBadge(status: process.status)
-					HomerQuestionCountBadge(count: process.openQuestions ?? 0)
-				}
+				HomerProcessStatusCell(process: process)
 			}
-			.width(min: 90, ideal: 130)
+			.width(min: 50, ideal: 120)
 
-			TableColumn("Status Time") { process in
-				if let timestamp = process.history.last?.timestamp {
-					Text(HomerFormat.timestamp(timestamp))
-						.scaledFont(.callout, design: .monospaced)
-						.foregroundStyle(.secondary)
-				}
-				else {
-					placeholder
-				}
+			TableColumn("Duration") { process in
+				HomerRunDurationView(process: process)
 			}
-			.width(min: 120, ideal: 140)
+			.width(min: 60, ideal: 80)
 
 			TableColumn("Last Command") { process in
 				HomerLastCommandView(process: process)
@@ -314,24 +304,10 @@ struct HomerProcessListView: View {
 				.width(min: 110, ideal: 200)
 			}
 
-			TableColumn("Purge") { process in
-				if let purgeAt = process.purgeAt {
-					Text(HomerFormat.timeUntil(purgeAt, now: Date()))
-						.scaledFont(.callout)
-						.foregroundStyle(.secondary)
-						.help(HomerFormat.timestamp(purgeAt))
-				}
-				else {
-					Text("—")
-						.foregroundStyle(.secondary)
-				}
-			}
-			.width(min: 60, ideal: 80)
-
 			TableColumn("Actions") { process in
 				actions(for: process)
 			}
-			.width(min: 70, ideal: 80)
+			.width(min: 44, ideal: 56)
 		}
 		// Stripes would run on past the last row and fill the page; the pills carry the rows.
 		.alternatingRowBackgrounds(.disabled)
@@ -374,20 +350,23 @@ struct HomerProcessListView: View {
 				store.send(.killTapped(processId: process.id))
 			} label: {
 				Label("Kill", systemImage: "xmark.octagon")
+					.labelStyle(.iconOnly)
 					.foregroundStyle(.red)
 			}
 			.buttonStyle(.scaledBordered)
 			.controlSize(.small)
+			.help("Kill process \(process.id)")
 		}
 		else if process.isRetryable, store.user?.canRetry(process) == true {
 			Button {
 				store.send(.retryTapped(processId: process.id))
 			} label: {
 				Label("Retry", systemImage: "arrow.counterclockwise")
+					.labelStyle(.iconOnly)
 			}
 			.buttonStyle(.scaledBordered)
 			.controlSize(.small)
-			.help("Start the run again with the same inputs")
+			.help("Retry process \(process.id): start it again with the same inputs")
 		}
 	}
 

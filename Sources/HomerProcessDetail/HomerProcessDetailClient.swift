@@ -12,6 +12,9 @@ public struct HomerProcessDetailClient: Sendable {
 	public var langGraphStatus: @Sendable (_ baseURL: String, _ processId: Int, _ graph: Bool) async throws -> HomerLangGraphStatus?
 	/// Returns the new run's id.
 	public var resumeProcess: @Sendable (_ baseURL: String, _ id: Int) async throws -> Int
+	/// The run's inbox, nil from a server without one.
+	public var runMessages: @Sendable (_ baseURL: String, _ processId: Int) async throws -> [HomerRunMessage]?
+	public var sendRunMessage: @Sendable (_ baseURL: String, _ processId: Int, _ text: String) async throws -> HomerRunMessage
 	public var artifacts: @Sendable (_ baseURL: String, _ processId: Int) async throws -> [HomerArtifact]
 	public var artifactContent: @Sendable (_ baseURL: String, _ processId: Int, _ path: String) async throws -> HomerArtifactContent
 	/// Tails a command's output from a byte offset on.
@@ -39,6 +42,8 @@ extension HomerProcessDetailClient: DependencyKey {
 		process: { try await HomerAPI.process(baseURL: $0, id: $1) },
 		langGraphStatus: { try await HomerAPI.langGraphStatus(baseURL: $0, processId: $1, graph: $2) },
 		resumeProcess: { try await HomerAPI.resumeProcess(baseURL: $0, id: $1) },
+		runMessages: { try await HomerAPI.runMessages(baseURL: $0, processId: $1) },
+		sendRunMessage: { try await HomerAPI.sendRunMessage(baseURL: $0, processId: $1, text: $2) },
 		artifacts: { try await HomerAPI.artifacts(baseURL: $0, processId: $1) },
 		artifactContent: { try await HomerAPI.artifactContent(baseURL: $0, processId: $1, path: $2) },
 		logEvents: {

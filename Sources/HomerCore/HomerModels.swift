@@ -174,6 +174,10 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 	public var tags: [String]?
 	/// The run's Langfuse trace; nil unless the server has Langfuse configured.
 	public var langfuseTraceUrl: String?
+	/// Why the run ended `FAILED` before any command started — a claim timeout, a lock skip, the
+	/// parallel-run cap or a full queue (Homer 1.38). A sentence the server builds, shown as
+	/// plain text; nil for every other run, and from an older server.
+	public var failureReason: String?
 
 	public init(
 		id: Int,
@@ -193,7 +197,8 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		parentProcessId: Int? = nil,
 		rootProcessId: Int? = nil,
 		tags: [String]? = nil,
-		langfuseTraceUrl: String? = nil
+		langfuseTraceUrl: String? = nil,
+		failureReason: String? = nil
 	) {
 		self.id = id
 		self.status = status
@@ -213,6 +218,7 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		self.rootProcessId = rootProcessId
 		self.tags = tags
 		self.langfuseTraceUrl = langfuseTraceUrl
+		self.failureReason = failureReason
 	}
 
 	public init(from decoder: any Decoder) throws {
@@ -236,13 +242,14 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		rootProcessId = try container.decodeIfPresent(Int.self, forKey: .rootProcessId)
 		tags = try container.decodeIfPresent([String].self, forKey: .tags)
 		langfuseTraceUrl = try container.decodeIfPresent(String.self, forKey: .langfuseTraceUrl)
+		failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case id, status, agentName, group, owner, history, executions, currentCommand, currentCommandStart
 		case currentCommandKind
 		case purgeAt, runner, openQuestions, costUsd, parentProcessId, rootProcessId, tags
-		case langfuseTraceUrl
+		case langfuseTraceUrl, failureReason
 	}
 
 	/// A run a cron tick started, or one of its sub-runs: the scheduler stamps its runs' owner
@@ -267,30 +274,54 @@ public nonisolated struct HomerProcess: Equatable, Sendable, Identifiable, Decod
 		status == .failed || status == .killed || status == .unknown
 	}
 
-	/// When the process entered its current status: its last history entry, as the console's
-	/// "Status Time" column shows it.
-	public var statusDate: Date? {
-		history.last.map { Date(timeIntervalSince1970: $0.timestamp) }
-	}
-
 	public enum LastCommandOutcome: Equatable, Sendable {
 		case running
 		case succeeded
 		case failed
 	}
 
-	/// The console's "Last Command" column (`getLastCommand` in `lib/utils/process.ts`): the
-	/// running command of a working process, else the outcome of the most recent execution that
-	/// ran. A command its `when:` skipped never ran, so trailing skips are passed over (Homer
-	/// 1.37.1), and a run whose every command was skipped has none.
-	public var lastCommand: (outcome: LastCommandOutcome, label: String)? {
-		if status == .working, let currentCommand {
-			return (.running, currentCommand)
+	/// One square of the process list's command row (`CommandDot`, Homer 1.39).
+	public nonisolated struct CommandDot: Equatable, Sendable {
+		public var label: String
+		public var outcome: LastCommandOutcome
+
+		public init(label: String, outcome: LastCommandOutcome) {
+			self.label = label
+			self.outcome = outcome
 		}
-		guard let lastRan = executions.last(where: { $0.skipped != true }) else {
+	}
+
+	/// One dot per command the run executed, then the running one while it works
+	/// (`commandDotStates` in `lib/utils/process.ts`). A command its `when:` skipped never ran
+	/// and gets none; nor do commands still ahead, since the list does not say how many there are.
+	public var commandDots: [CommandDot] {
+		var dots = executions.filter { $0.skipped != true }.map {
+			CommandDot(label: $0.label, outcome: $0.resultCode == 0 ? .succeeded : .failed)
+		}
+		if status == .working, let currentCommand {
+			dots.append(CommandDot(label: currentCommand, outcome: .running))
+		}
+		return dots
+	}
+
+	/// The console's "Last Command" column (`lastCommandFromDots`): the last of `commandDots` —
+	/// the running command of a working process, else the most recent execution that ran.
+	/// Trailing skips are passed over (Homer 1.37.1), and a run whose every command was skipped
+	/// has none.
+	public var lastCommand: (outcome: LastCommandOutcome, label: String)? {
+		commandDots.last.map { ($0.outcome, $0.label) }
+	}
+
+	/// How long the whole run has gone on, in seconds (`runDurationSeconds`, the list's Duration
+	/// column since Homer 1.39): from its first status change to its last, or to `now` while it
+	/// is created or working. Nil without a history, or when the span would be negative.
+	public func duration(now: Date) -> TimeInterval? {
+		guard let start = history.first?.timestamp, let last = history.last?.timestamp else {
 			return nil
 		}
-		return (lastRan.resultCode == 0 ? .succeeded : .failed, lastRan.label)
+		let end = isKillable ? now.timeIntervalSince1970 : last
+		let seconds = end - start
+		return seconds.isFinite && seconds >= 0 ? seconds : nil
 	}
 }
 
