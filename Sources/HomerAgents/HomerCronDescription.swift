@@ -324,26 +324,3 @@ nonisolated enum HomerCronDescription {
 		"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
 	]
 }
-
-/// "2h 3m ago", "1d 2h ago", "12m ago", "45s ago" or "just now" — `timeUntil` the other way.
-nonisolated enum HomerScheduleFormat {
-	static func timeSince(_ epochSeconds: Double, now: Date) -> String {
-		let seconds = Int(now.timeIntervalSince1970.rounded(.down)) - Int(epochSeconds)
-		guard seconds > 0 else {
-			return "just now"
-		}
-		let minutes = seconds / 60
-		let hours = minutes / 60
-		let days = hours / 24
-		if days > 0 {
-			return "\(days)d \(hours % 24)h ago"
-		}
-		if hours > 0 {
-			return "\(hours)h \(minutes % 60)m ago"
-		}
-		if minutes > 0 {
-			return "\(minutes)m ago"
-		}
-		return "\(seconds)s ago"
-	}
-}

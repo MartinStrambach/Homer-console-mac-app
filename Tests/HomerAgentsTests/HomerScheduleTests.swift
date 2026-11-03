@@ -98,13 +98,4 @@ struct HomerScheduleTests {
 		#expect(cron.progress(at: Date(timeIntervalSince1970: 3000)) == 1)
 		#expect(HomerAgent.Cron(expression: "* * * * *", timezone: "UTC", nextRunAt: 2000).progress(at: .now) == nil)
 	}
-
-	@Test("time since the last run")
-	func timeSince() {
-		let now = Date(timeIntervalSince1970: 1_000_000)
-		#expect(HomerScheduleFormat.timeSince(1_000_000 - (2 * 3600 + 3 * 60 + 5), now: now) == "2h 3m ago")
-		#expect(HomerScheduleFormat.timeSince(1_000_000 - 26 * 3600, now: now) == "1d 2h ago")
-		#expect(HomerScheduleFormat.timeSince(1_000_000 - 45, now: now) == "45s ago")
-		#expect(HomerScheduleFormat.timeSince(1_000_000, now: now) == "just now")
-	}
 }
