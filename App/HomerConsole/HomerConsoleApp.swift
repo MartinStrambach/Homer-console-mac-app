@@ -31,6 +31,7 @@ struct HomerConsoleApp: App {
 			}
 			.frame(minWidth: 900, minHeight: 560)
 			.homerUIFontScale(TextSize.scale(for: uiFontSize))
+			.appAppearance()
 			// Once per launch, not with the console's own `onAppear`: the open questions are
 			// polled from here on, for the Dock badge.
 			.task { store.send(.start) }
@@ -60,6 +61,7 @@ struct HomerConsoleApp: App {
 
 		Settings {
 			SettingsView(updater: updaterController.updater)
+				.appAppearance()
 		}
 	}
 }
