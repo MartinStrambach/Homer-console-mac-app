@@ -4,8 +4,8 @@ import HomerCore
 
 /// The Costs page of one instance (admins only), the console's `app/(dashboard)/costs/page.tsx`:
 /// rolling-window spend against the configured caps, polled on the console's 5 s; and the
-/// persistent ledger's month (with its month picker) and all-time totals, re-read every 30 s,
-/// the console's `staleTime` for them.
+/// persistent ledger's month (with its month picker) and all-time totals, and the spend per value
+/// of one cost-tracked tag key, re-read every 30 s, the console's `staleTime` for them.
 @Reducer
 public struct HomerCostsReducer: Sendable {
 	/// `useCosts`' `refetchInterval`.
@@ -31,6 +31,15 @@ public struct HomerCostsReducer: Sendable {
 
 		public internal(set) var totals: HomerTotalCosts?
 		public internal(set) var totalsError: String?
+
+		/// The tag key the picker chose; nil, or a key the server no longer tracks, follows the
+		/// first tracked one (`shownTagKey`).
+		public internal(set) var selectedTagKey: String?
+		/// The last key's breakdown read. While another key loads it stays on screen, dimmed.
+		public internal(set) var tagCosts: HomerCostByTag?
+		public internal(set) var tagCostsError: String?
+		/// The key the running loop reads; nil while none runs.
+		var polledTagKey: String?
 
 		/// Between `shown` and `hidden`: the page polls.
 		var isShown = false
@@ -61,6 +70,25 @@ public struct HomerCostsReducer: Sendable {
 			return months.sorted(by: >)
 		}
 
+		/// The tag keys the server sums spend for, from the snapshot; none hides the card.
+		public var tagKeys: [String] {
+			snapshot?.costTrackedTagKeys ?? []
+		}
+
+		/// The picker's choice, as the console derives it: the key picked while the server still
+		/// tracks it, else the first one.
+		public var shownTagKey: String? {
+			if let selectedTagKey, tagKeys.contains(selectedTagKey) {
+				return selectedTagKey
+			}
+			return tagKeys.first
+		}
+
+		/// Whether `tagCosts` is the key the picker shows.
+		public var isTagCostsCurrent: Bool {
+			tagCosts != nil && tagCosts?.key == shownTagKey
+		}
+
 		/// Nothing has answered yet, successfully or not.
 		public var isLoading: Bool {
 			snapshot == nil && monthly == nil && totals == nil
@@ -71,7 +99,7 @@ public struct HomerCostsReducer: Sendable {
 		/// with the same one.
 		public var errorMessages: [String] {
 			var seen = Set<String>()
-			return [snapshotError, monthlyError, totalsError].compactMap(\.self).filter { seen.insert($0).inserted }
+			return [snapshotError, monthlyError, totalsError, tagCostsError].compactMap(\.self).filter { seen.insert($0).inserted }
 		}
 	}
 
@@ -82,10 +110,13 @@ public struct HomerCostsReducer: Sendable {
 		/// The header's Refresh: fetches right away, without waiting for the next poll.
 		case refreshTapped
 		case monthSelected(String)
+		case tagKeySelected(String)
 		case snapshotLoaded(Result<HomerCostSnapshot, any Error>)
 		/// `month` is the one asked for (nil: the current one).
 		case monthlyLoaded(month: String?, Result<HomerMonthlyCosts, any Error>)
 		case totalsLoaded(Result<HomerTotalCosts, any Error>)
+		/// `key` is the one asked for.
+		case tagCostsLoaded(key: String, Result<HomerCostByTag, any Error>)
 		case delegate(HomerPageDelegate)
 	}
 
@@ -93,6 +124,7 @@ public struct HomerCostsReducer: Sendable {
 		case snapshotPolling
 		case monthlyPolling
 		case totalsPolling
+		case tagCostsPolling
 	}
 
 	@Dependency(HomerCostsClient.self)
@@ -111,13 +143,24 @@ public struct HomerCostsReducer: Sendable {
 					return .none
 				}
 				state.isShown = true
-				return .merge(pollSnapshot(state), pollMonthly(state), pollTotals(state))
+				// With an earlier snapshot the key is known already; otherwise its arrival starts
+				// the tag loop.
+				return .merge(pollSnapshot(state), pollMonthly(state), pollTotals(state), syncTagPolling(&state))
 
 			case .refreshTapped:
-				return state.isShown ? .merge(pollSnapshot(state), pollMonthly(state), pollTotals(state)) : .none
+				guard state.isShown else {
+					return .none
+				}
+				return .merge(
+					pollSnapshot(state),
+					pollMonthly(state),
+					pollTotals(state),
+					state.polledTagKey.map { pollTagCosts(baseURL: state.baseURL, key: $0) } ?? .none
+				)
 
 			case .hidden:
 				state.isShown = false
+				state.polledTagKey = nil
 				return stopPolling()
 
 			case let .monthSelected(month):
@@ -133,7 +176,31 @@ public struct HomerCostsReducer: Sendable {
 			case let .snapshotLoaded(.success(snapshot)):
 				state.snapshot = snapshot
 				state.snapshotError = nil
-				return .none
+				// The tracked keys can change with a config reload.
+				return syncTagPolling(&state)
+
+			case let .tagKeySelected(key):
+				guard key != state.shownTagKey else {
+					return .none
+				}
+				state.selectedTagKey = key
+				state.tagCostsError = nil
+				return syncTagPolling(&state)
+
+			case let .tagCostsLoaded(key, result):
+				// A replaced loop's answer is dropped before it gets here; this also drops one
+				// that was already in flight.
+				guard key == state.polledTagKey else {
+					return .none
+				}
+				switch result {
+				case let .success(tagCosts):
+					state.tagCosts = tagCosts
+					state.tagCostsError = nil
+					return .none
+				case let .failure(error):
+					return failed(error, at: \.tagCostsError, &state)
+				}
 
 			case let .snapshotLoaded(.failure(error)):
 				return failed(error, at: \.snapshotError, &state)
@@ -176,6 +243,7 @@ public struct HomerCostsReducer: Sendable {
 	) -> Effect<Action> {
 		if error as? HomerAPIError == .unauthorized {
 			state.isShown = false
+			state.polledTagKey = nil
 			return .merge(stopPolling(), .send(.delegate(.unauthorized)))
 		}
 		state[keyPath: message] = error.localizedDescription
@@ -186,8 +254,34 @@ public struct HomerCostsReducer: Sendable {
 		.merge(
 			.cancel(id: CancelID.snapshotPolling),
 			.cancel(id: CancelID.monthlyPolling),
-			.cancel(id: CancelID.totalsPolling)
+			.cancel(id: CancelID.totalsPolling),
+			.cancel(id: CancelID.tagCostsPolling)
 		)
+	}
+
+	/// Points the tag loop at the key the picker shows, while the page is shown: starts it, moves
+	/// it to another key, or stops it once the server tracks none.
+	private func syncTagPolling(_ state: inout State) -> Effect<Action> {
+		guard state.isShown, state.shownTagKey != state.polledTagKey else {
+			return .none
+		}
+		state.polledTagKey = state.shownTagKey
+		guard let key = state.polledTagKey else {
+			state.tagCosts = nil
+			state.tagCostsError = nil
+			return .cancel(id: CancelID.tagCostsPolling)
+		}
+		return pollTagCosts(baseURL: state.baseURL, key: key)
+	}
+
+	private func pollTagCosts(baseURL: String, key: String) -> Effect<Action> {
+		.run { send in
+			while true {
+				await send(.tagCostsLoaded(key: key, Result { try await costsClient.byTag(baseURL, key) }))
+				try await clock.sleep(for: Self.ledgerPollInterval)
+			}
+		}
+		.cancellable(id: CancelID.tagCostsPolling, cancelInFlight: true)
 	}
 
 	private func pollSnapshot(_ state: State) -> Effect<Action> {

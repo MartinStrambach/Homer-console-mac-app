@@ -138,7 +138,8 @@ struct HomerProcessOutputView: View {
 					conversation: state.conversation,
 					harness: harness,
 					isLive: !state.hasEnded,
-					commandStart: store.commandStart
+					commandStart: store.commandStart,
+					accounting: store.llmAccounting
 				)
 			}
 			else if let error = state.error {
@@ -178,6 +179,9 @@ struct HomerLLMConversationView: View {
 	let harness: HomerLLMHarness
 	let isLive: Bool
 	let commandStart: Double?
+	/// The server's pricing of the finished command, which wins over the harness's own figure
+	/// (Codex and opencode report none), as the console's summary prefers it.
+	var accounting: HomerLLMAccounting?
 
 	private static let bottomID = "bottom"
 
@@ -291,8 +295,9 @@ struct HomerLLMConversationView: View {
 			}
 			if let outcome = conversation.outcome {
 				status(outcome.status)
-				// Codex and opencode report tokens only; the server prices them in the run's cost.
-				metric("cost", outcome.costUsd.map(HomerFormat.cost) ?? "—")
+				// Codex and opencode report tokens only: the server's pricing, once the command has
+				// finished, is the figure; the harness's own is the fallback while it runs.
+				metric("cost", accounting?.costText ?? outcome.costUsd.map(HomerFormat.cost) ?? "—")
 				metric("tokens", Self.tokens(outcome.usage))
 				if let duration = outcome.durationMs {
 					metric(

@@ -345,8 +345,13 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// From the cost ledger, not the output: still there once the artifacts are purged.
 			HomerStat("Cost", systemImage: "dollarsign.circle") {
 				if let cost = process.costUsd, cost > 0 {
-					Text(HomerFormat.cost(cost))
-						.monospacedDigit()
+					HStack(alignment: .firstTextBaseline, spacing: 6) {
+						Text(HomerFormat.cost(cost))
+							.monospacedDigit()
+						if let source = process.costSource {
+							HomerCostSourceTag(source: source)
+						}
+					}
 				}
 				else {
 					Text(verbatim: "—")
@@ -619,6 +624,13 @@ struct HomerExecutionRow: View {
 						.fontWeight(.medium)
 					outcomeLabel
 					Spacer()
+					if let accounting = execution.llmAccounting, accounting.source != HomerCostSource.none {
+						Text(accounting.costText)
+							.scaledFont(.callout)
+							.foregroundStyle(.secondary)
+							.monospacedDigit()
+							.help("LLM cost, \(HomerCostSource.label(accounting.source))")
+					}
 					if let start = execution.start, let end = execution.end {
 						Label(HomerFormat.duration(from: start, to: end), systemImage: "timer")
 							.scaledFont(.callout)
@@ -700,6 +712,20 @@ struct HomerExecutionRow: View {
 							.textSelection(.enabled)
 					}
 				}
+				if let accounting = execution.llmAccounting {
+					HomerGridRow("LLM cost") { HomerLLMCost(accounting: accounting) }
+					if let usage = accounting.usage {
+						HomerGridRow("Tokens") { HomerTokenCounts(usage: usage) }
+					}
+					if let session = accounting.sessionId {
+						HomerGridRow("Session") {
+							Text(session)
+								.scaledFont(.callout, design: .monospaced)
+								.foregroundStyle(.secondary)
+								.textSelection(.enabled)
+						}
+					}
+				}
 			}
 			if execution.label == store.langGraphLabel {
 				VStack(alignment: .leading, spacing: 6) {
@@ -750,6 +776,82 @@ struct HomerExecutionRow: View {
 			Text("-")
 				.foregroundStyle(.secondary)
 		}
+	}
+}
+
+/// What a harness command was charged and by which price (`execution-item.tsx`'s
+/// `LlmCostLine`), with why the figure is degraded under it: a fallback to a lower price in
+/// orange, a session figure charged before every call was in as a note.
+struct HomerLLMCost: View {
+	let accounting: HomerLLMAccounting
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(alignment: .firstTextBaseline, spacing: 6) {
+				if accounting.source == HomerCostSource.none {
+					Text(accounting.costText)
+						.foregroundStyle(.secondary)
+				}
+				else {
+					Text(accounting.costText)
+						.scaledFont(.callout, design: .monospaced)
+						.fontWeight(.medium)
+						.textSelection(.enabled)
+				}
+				HomerCostSourceTag(source: accounting.source)
+			}
+			if let reason = accounting.fallbackText {
+				Label(reason, systemImage: accounting.isFallback ? "exclamationmark.triangle" : "clock")
+					.scaledFont(.caption)
+					.foregroundStyle(accounting.isFallback ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+					.textSelection(.enabled)
+			}
+		}
+	}
+}
+
+/// A command's tokens as `1,200 in · 340 out · 12 reasoning`: the counts in the primary color,
+/// what they count in the secondary one.
+struct HomerTokenCounts: View {
+	let usage: HomerLLMAccounting.Usage
+
+	var body: some View {
+		HomerFlowLayout(spacing: 6) {
+			ForEach(Array(usage.counts.enumerated()), id: \.element.id) { index, count in
+				HStack(alignment: .firstTextBaseline, spacing: 6) {
+					if index > 0 {
+						Text(verbatim: "·")
+							.foregroundStyle(.tertiary)
+					}
+					HStack(alignment: .firstTextBaseline, spacing: 3) {
+						Text(count.value.formatted())
+							.monospacedDigit()
+						Text(count.name)
+							.foregroundStyle(.secondary)
+					}
+				}
+			}
+		}
+	}
+}
+
+/// Which price a cost figure came from, outlined so it does not read as a status pill, with the
+/// console's explanation as its tooltip.
+struct HomerCostSourceTag: View {
+	let source: String
+
+	var body: some View {
+		Text(HomerCostSource.label(source))
+			.scaledFont(.caption2)
+			.foregroundStyle(.secondary)
+			.lineLimit(1)
+			.padding(.horizontal, 5)
+			.padding(.vertical, 1)
+			.overlay {
+				RoundedRectangle(cornerRadius: 4, style: .continuous)
+					.strokeBorder(Color(nsColor: .separatorColor))
+			}
+			.help(HomerCostSource.explanation(source))
 	}
 }
 

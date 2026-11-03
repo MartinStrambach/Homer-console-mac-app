@@ -13,6 +13,7 @@ struct HomerCostModelsTests {
 		  "perAgentUsdLast24h": { "reviewer": 2.0, "factory": 9.5 },
 		  "perAgentCapUsdPerDay": { "factory": 10.0, "planner": 3.0 },
 		  "snapshotAtSec": 1783420800,
+		  "costTrackedTagKeys": ["ticket_id", "mr"],
 		  "somethingNewer": true
 		}
 		"""
@@ -26,6 +27,7 @@ struct HomerCostModelsTests {
 		#expect(snapshot.perAgentUsdLast24h == ["reviewer": 2.0, "factory": 9.5])
 		#expect(snapshot.perAgentCapUsdPerDay == ["factory": 10.0, "planner": 3.0])
 		#expect(snapshot.snapshotAtSec == 1_783_420_800)
+		#expect(snapshot.costTrackedTagKeys == ["ticket_id", "mr"])
 	}
 
 	@Test("a snapshot without a global cap or any agent decodes")
@@ -35,6 +37,25 @@ struct HomerCostModelsTests {
 
 		#expect(snapshot.globalCapUsdPerMin == nil)
 		#expect(snapshot.agentUsages.isEmpty)
+		#expect(snapshot.costTrackedTagKeys.isEmpty)
+	}
+
+	@Test("a tag's breakdown decodes into rows sorted by value, not truncated unless it says so")
+	func decodesCostByTag() throws {
+		let json = #"{ "key": "ticket_id", "valuesUsd": { "PROJ-2": 1.5, "PROJ-1": 0.25 }, "totalUsd": 1.75 }"#
+		let tagCosts = try JSONDecoder().decode(HomerCostByTag.self, from: Data(json.utf8))
+
+		#expect(tagCosts.key == "ticket_id")
+		#expect(tagCosts.rows == [HomerCostRow(name: "PROJ-1", usd: 0.25), HomerCostRow(name: "PROJ-2", usd: 1.5)])
+		#expect(tagCosts.totalUsd == 1.75)
+		#expect(tagCosts.truncated == false)
+
+		let truncated = try JSONDecoder().decode(
+			HomerCostByTag.self,
+			from: Data(#"{ "key": "mr", "valuesUsd": {}, "totalUsd": 0, "truncated": true }"#.utf8)
+		)
+		#expect(truncated.truncated)
+		#expect(truncated.rows.isEmpty)
 	}
 
 	@Test("a page that is not Homer's answer does not decode as a snapshot")
@@ -71,8 +92,8 @@ struct HomerCostModelsTests {
 		#expect(monthly.month == "2026-07")
 		#expect(monthly.totalUsd == 2.5)
 		#expect(monthly.rows == [
-			HomerAgentCost(agentName: "planner", usd: 0.5),
-			HomerAgentCost(agentName: "reviewer", usd: 2.0),
+			HomerCostRow(name: "planner", usd: 0.5),
+			HomerCostRow(name: "reviewer", usd: 2.0),
 		])
 		#expect(monthly.pickerMonths == ["2026-07", "2026-06"])
 	}
@@ -91,7 +112,7 @@ struct HomerCostModelsTests {
 		let totals = try JSONDecoder().decode(HomerTotalCosts.self, from: Data(json.utf8))
 
 		#expect(totals.totalUsd == 3.5)
-		#expect(totals.rows.map(\.agentName) == ["planner", "reviewer"])
+		#expect(totals.rows.map(\.name) == ["planner", "reviewer"])
 	}
 
 	@Test("usage against a cap", arguments: [

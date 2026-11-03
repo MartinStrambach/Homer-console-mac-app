@@ -443,11 +443,13 @@ public struct HomerProcessDetailReducer: Sendable {
 			let paths: [HomerOutputStream: String]
 			let isLive: Bool
 			let kind: String?
+			var accounting: HomerLLMAccounting?
 			if process.executions.indices.contains(executionIndex) {
 				let execution = process.executions[executionIndex]
 				paths = [.stdout: execution.stdOut, .stderr: execution.stdErr].compactMapValues { $0 }
 				isLive = false
 				kind = execution.kind
+				accounting = execution.llmAccounting
 			}
 			else {
 				// The running command's files, which no execution names yet.
@@ -465,7 +467,8 @@ public struct HomerProcessDetailReducer: Sendable {
 				stream: stream,
 				harness: HomerLLMHarness(kind: kind),
 				isLiveCommand: isLive,
-				commandStart: isLive ? process.currentCommandStart : nil
+				commandStart: isLive ? process.currentCommandStart : nil,
+				llmAccounting: accounting
 			)
 			return .none
 

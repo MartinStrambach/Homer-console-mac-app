@@ -61,30 +61,57 @@ public struct HomerConsoleView<Leading: View>: View {
 	// MARK: - Header
 
 	private var headerView: some View {
-		HStack {
-			HStack(spacing: 12) {
-				leading
+		HStack(spacing: 12) {
+			leading
 
-				if showsConsole {
-					Picker("Homer page", selection: $store.tab) {
-						ForEach(availableTabs, id: \.self) { tab in
-							Text(title(of: tab)).tag(tab)
-						}
-					}
-					.pickerStyle(.segmented)
-					.labelsHidden()
-					.fixedSize()
-					.overlay { openQuestionsDot }
+			// The widest layout that fits: first the instance menu drops its name, then the
+			// page picker turns from segments into a pop-up — otherwise a narrow window cuts
+			// the header off at its trailing edge.
+			ViewThatFits(in: .horizontal) {
+				headerControls(pagePicker: .segmented, namesInstance: true)
+				headerControls(pagePicker: .segmented, namesInstance: false)
+				headerControls(pagePicker: .popUp, namesInstance: false)
+			}
+		}
+		// The height its 30 pt buttons give it, signed out too (there are none then), so the
+		// leading view does not move — in Bridge Commander that also matches the repository
+		// header's, so the section switcher stays put when the section changes.
+		.frame(minHeight: 30)
+		.padding()
+		.windowTitleBarArea()
+		.background { instanceShortcuts }
+	}
+
+	private enum PagePickerStyle {
+		case segmented
+		case popUp
+	}
+
+	/// The page picker and the controls at the trailing end, in one of the header's layouts.
+	private func headerControls(pagePicker: PagePickerStyle, namesInstance: Bool) -> some View {
+		HStack(spacing: 12) {
+			if showsConsole {
+				switch pagePicker {
+				case .segmented:
+					pagePickerView
+						.pickerStyle(.segmented)
+						.fixedSize()
+						.overlay { openQuestionsDot }
+				case .popUp:
+					pagePickerView
+						.pickerStyle(.menu)
+						.fixedSize()
+						.overlay(alignment: .topTrailing) { popUpOpenQuestionsDot }
 				}
 			}
 
-			Spacer()
+			Spacer(minLength: 0)
 
 			// One container, so the glass pieces sample each other and blend where they meet.
 			GlassEffectContainer(spacing: 8) {
 				HStack(spacing: 8) {
 					if !store.instances.isEmpty {
-						instanceMenu
+						instanceMenu(showsName: namesInstance)
 					}
 
 					if showsConsole, let instance = store.selectedInstance, let user = instance.user {
@@ -120,13 +147,15 @@ public struct HomerConsoleView<Leading: View>: View {
 				}
 			}
 		}
-		// The height its 30 pt buttons give it, signed out too (there are none then), so the
-		// leading view does not move — in Bridge Commander that also matches the repository
-		// header's, so the section switcher stays put when the section changes.
-		.frame(minHeight: 30)
-		.padding()
-		.windowTitleBarArea()
-		.background { instanceShortcuts }
+	}
+
+	private var pagePickerView: some View {
+		Picker("Homer page", selection: $store.tab) {
+			ForEach(availableTabs, id: \.self) { tab in
+				Text(title(of: tab)).tag(tab)
+			}
+		}
+		.labelsHidden()
 	}
 
 	/// The pages the signed-in user may see: the admin-only ones only for an admin, as in the
@@ -170,9 +199,25 @@ public struct HomerConsoleView<Leading: View>: View {
 		}
 	}
 
+	/// The pop-up picker shows only the page on screen, so the dot goes on its corner while
+	/// the instance has open questions and another page is shown (the Questions item counts
+	/// them in the menu).
+	@ViewBuilder
+	private var popUpOpenQuestionsDot: some View {
+		if (store.selectedInstance?.openQuestionCount ?? 0) > 0, store.tab != .questions {
+			Circle()
+				.fill(.orange)
+				.frame(width: 8, height: 8)
+				.offset(x: 2, y: -2)
+				.allowsHitTesting(false)
+		}
+	}
+
 	// MARK: - Instances
 
-	private var instanceMenu: some View {
+	/// Without its name (a narrow window), the menu is the server icon alone; its help still
+	/// says what it does, and its items name every instance.
+	private func instanceMenu(showsName: Bool) -> some View {
 		Menu {
 			ForEach(Array(store.instances.enumerated()), id: \.element.id) { index, instance in
 				Toggle(isOn: Binding(
@@ -200,7 +245,13 @@ public struct HomerConsoleView<Leading: View>: View {
 				}
 			}
 		} label: {
-			Label(menuLabel, systemImage: "server.rack")
+			if showsName {
+				Label(menuLabel, systemImage: "server.rack")
+			}
+			else {
+				Image(systemName: "server.rack")
+					.accessibilityLabel(menuLabel)
+			}
 		}
 		.labelStyle(.titleAndIcon)
 		.menuStyle(.borderlessButton)
