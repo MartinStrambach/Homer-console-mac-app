@@ -6,7 +6,7 @@ import HomerWorkflowGraph
 import SwiftUI
 
 /// A run's page (`app/(dashboard)/processes/[id]/page.tsx`), in place of the page that opened
-/// it: Back, its status and actions, runner, open questions, status timeline, the runs around
+/// it: Back, its status and actions, runner, open questions, messages, status timeline, the runs around
 /// it (a root's flow, a sub run's children) and executions, each execution's output a click
 /// away. `backTitle` names that page — Back returns there once
 /// no earlier run is left to go back to. The questions are the instance's — answered there, as
@@ -228,12 +228,18 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// A plain stack: a run has a handful of sections and executions.
 			ScrollView {
 				VStack(alignment: .leading, spacing: 16) {
+					if let reason = process.failureReason {
+						failureReason(reason)
+					}
 					stats(process)
 					if contentWidth >= Self.twoColumnWidth {
 						// The run's work beside its history and where it ran.
 						HStack(alignment: .top, spacing: 16) {
 							VStack(alignment: .leading, spacing: 16) {
 								questions(store.processId)
+								if store.showsMessages {
+									HomerRunMessagesSection(store: store)
+								}
 								HomerRelatedRunsSection(store: store)
 								executions(process)
 							}
@@ -252,6 +258,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 							HomerRunnerPanel(runner: runner)
 						}
 						questions(store.processId)
+						if store.showsMessages {
+							HomerRunMessagesSection(store: store)
+						}
 						timeline(process)
 						HomerRelatedRunsSection(store: store)
 						executions(process)
@@ -270,6 +279,26 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// shrinks to its header and the window centres it.
 			Color.clear
 		}
+	}
+
+	/// Why the run ended `FAILED` before any command started (Homer 1.38, `FailureReason`'s
+	/// `detail` variant) — the one thing such a run has to say, so it leads the page.
+	private func failureReason(_ reason: String) -> some View {
+		HStack(alignment: .firstTextBaseline, spacing: 8) {
+			Image(systemName: "exclamationmark.triangle.fill")
+				.foregroundStyle(.red)
+			VStack(alignment: .leading, spacing: 4) {
+				Text("Failed before it started")
+					.fontWeight(.medium)
+				Text(reason)
+					.textSelection(.enabled)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.scaledFont(.callout)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(12)
+		.homerInset(tint: .red)
 	}
 
 	/// From this wide on, the timeline and runner move to a column of their own.

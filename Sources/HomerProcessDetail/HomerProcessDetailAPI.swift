@@ -3,7 +3,7 @@ import HomerCore
 import HomerWorkflowGraph
 
 /// The process page's calls (`getProcess`, `getProcessLangGraph`, `resumeProcess`,
-/// `listArtifacts`, `fetchArtifactContent`/`downloadArtifact` in the console's
+/// `getRunMessages`, `sendRunMessage`, `listArtifacts`, `fetchArtifactContent`/`downloadArtifact` in the console's
 /// `lib/api/client.ts`). The log tail is `HomerCore`'s, shared with the agent editor.
 extension HomerAPI {
 	static func process(baseURL: String, id: Int) async throws -> HomerProcess {
@@ -33,6 +33,34 @@ extension HomerAPI {
 			HomerRetryResponse.self,
 			from: send("POST", "/api/v1/processes/\(id)/resume", baseURL: baseURL, refusalsInServerWords: true)
 		).processId
+	}
+
+	/// The run's inbox (Homer 1.38), oldest first — nil from a server without one, which answers
+	/// 404. (A run the user cannot see answers 404 too, but its page never loads.)
+	static func runMessages(baseURL: String, processId: Int) async throws -> [HomerRunMessage]? {
+		do {
+			let data = try await send("GET", "/api/v1/status/\(processId)/messages", baseURL: baseURL)
+			return try decode(HomerRunMessageList.self, from: data).messages
+		}
+		catch HomerAPIError.server(status: 404, _) {
+			return nil
+		}
+	}
+
+	/// Queues a message for the running run and returns it. The server's own words explain a
+	/// refusal: too long or empty (400), the run already ended (409), its inbox full (429).
+	static func sendRunMessage(baseURL: String, processId: Int, text: String) async throws -> HomerRunMessage {
+		let body = try JSONEncoder().encode(["text": text])
+		return try await decode(
+			HomerRunMessage.self,
+			from: send(
+				"POST",
+				"/api/v1/status/\(processId)/messages",
+				baseURL: baseURL,
+				body: body,
+				refusalsInServerWords: true
+			)
+		)
 	}
 
 	static func artifacts(baseURL: String, processId: Int) async throws -> [HomerArtifact] {

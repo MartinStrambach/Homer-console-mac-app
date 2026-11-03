@@ -16,6 +16,87 @@ package struct HomerStatusBadge: View {
 	}
 }
 
+/// A process status as one icon, its name in the tooltip — the compact process list's Status
+/// column (`StatusBadge`'s `icon` variant, Homer 1.39).
+package struct HomerStatusIcon: View {
+	let status: HomerProcessStatus
+
+	package init(status: HomerProcessStatus) {
+		self.status = status
+	}
+
+	package var body: some View {
+		Image(systemName: symbol)
+			.foregroundStyle(status.color)
+			.symbolEffect(.rotate, isActive: status == .working)
+			.scaledFont(.body)
+			.help(status.title)
+			.accessibilityLabel("Status: \(status.title)")
+	}
+
+	private var symbol: String {
+		switch status {
+		case .created:
+			"circle"
+		case .working:
+			"circle.dashed"
+		case .finished:
+			"checkmark.circle.fill"
+		case .failed:
+			"xmark.circle.fill"
+		case .killed:
+			"nosign"
+		case .unknown:
+			"questionmark.circle"
+		}
+	}
+}
+
+/// The process list's Status column: the status's icon, why it failed before it started, and
+/// its open questions.
+package struct HomerProcessStatusCell: View {
+	let process: HomerProcess
+
+	package init(process: HomerProcess) {
+		self.process = process
+	}
+
+	package var body: some View {
+		HStack(spacing: 6) {
+			HomerStatusIcon(status: process.status)
+			if let reason = process.failureReason {
+				HomerFailureReasonBadge(reason: reason)
+			}
+			HomerQuestionCountBadge(count: process.openQuestions ?? 0)
+		}
+	}
+}
+
+/// Why a run ended `FAILED` before any command started, beside its status in a row
+/// (`FailureReason`'s `inline` variant, Homer 1.38). Cut to one line; the whole sentence is the
+/// tooltip.
+package struct HomerFailureReasonBadge: View {
+	let reason: String
+
+	package init(reason: String) {
+		self.reason = reason
+	}
+
+	package var body: some View {
+		Label(reason, systemImage: "exclamationmark.triangle.fill")
+			.labelStyle(.titleAndIcon)
+			.scaledFont(.caption)
+			.foregroundStyle(.red)
+			.lineLimit(1)
+			.truncationMode(.tail)
+			.padding(.horizontal, 6)
+			.padding(.vertical, 2)
+			.background(.red.opacity(0.12), in: Capsule())
+			.help(reason)
+			.accessibilityLabel("Failure reason: \(reason)")
+	}
+}
+
 package struct HomerQuestionCountBadge: View {
 	let count: Int
 
@@ -62,6 +143,36 @@ package struct HomerAgentGroupLabel: View {
 	}
 }
 
+/// The Duration column (Homer 1.39): how long the whole run has gone on, ticking while it is
+/// created or working.
+package struct HomerRunDurationView: View {
+	let process: HomerProcess
+
+	package init(process: HomerProcess) {
+		self.process = process
+	}
+
+	package var body: some View {
+		if process.isKillable {
+			TimelineView(.periodic(from: .now, by: 1)) { context in
+				label(now: context.date)
+			}
+		}
+		else {
+			label(now: Date())
+		}
+	}
+
+	private func label(now: Date) -> some View {
+		Text(process.duration(now: now).map { HomerFormat.duration(from: 0, to: $0) } ?? "—")
+			.scaledFont(.callout)
+			.monospacedDigit()
+			.foregroundStyle(.secondary)
+	}
+}
+
+/// The Last Command column: a square per command the run executed (Homer 1.39), then the last
+/// one's outcome and label.
 package struct HomerLastCommandView: View {
 	let process: HomerProcess
 
@@ -70,16 +181,20 @@ package struct HomerLastCommandView: View {
 	}
 
 	package var body: some View {
-		if let lastCommand = process.lastCommand {
-			HStack(spacing: 4) {
-				icon(lastCommand.outcome)
-				Text(lastCommand.label)
-					.foregroundStyle(.secondary)
-					.lineLimit(1)
-					.truncationMode(.middle)
+		let dots = process.commandDots
+		if let lastCommand = dots.last {
+			VStack(alignment: .leading, spacing: 3) {
+				HomerCommandDots(dots)
+				HStack(spacing: 4) {
+					icon(lastCommand.outcome)
+					Text(lastCommand.label)
+						.foregroundStyle(.secondary)
+						.lineLimit(1)
+						.truncationMode(.middle)
+				}
+				.scaledFont(.callout)
+				.help(lastCommand.label)
 			}
-			.scaledFont(.callout)
-			.help(lastCommand.label)
 		}
 		else {
 			Text("-")

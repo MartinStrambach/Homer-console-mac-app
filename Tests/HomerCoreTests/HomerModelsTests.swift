@@ -38,6 +38,7 @@ struct HomerModelsTests {
 		      "id": 12344,
 		      "status": "PAUSED_BY_A_NEWER_SERVER",
 		      "agentName": "factory-notify",
+		      "failureReason": "Skipped: run #12340 holds the lock",
 		      "history": [],
 		      "executions": [],
 		      "currentCommand": null,
@@ -62,9 +63,10 @@ struct HomerModelsTests {
 		#expect(first.openQuestions == 1)
 		#expect(first.tags == ["ticket:MOB-1234"])
 		#expect(first.group == "platform")
-		#expect(first.statusDate == Date(timeIntervalSince1970: 1_700_000_100))
 		#expect(page.processes.last?.status == .unknown)
 		#expect(page.processes.last?.group == nil)
+		#expect(first.failureReason == nil)
+		#expect(page.processes.last?.failureReason == "Skipped: run #12340 holds the lock")
 	}
 
 	@Test("a working process reports its running command")
@@ -107,6 +109,54 @@ struct HomerModelsTests {
 
 		process.executions = [.init(label: "notify", resultCode: 0, skipped: true)]
 		#expect(process.lastCommand == nil)
+	}
+
+	@Test("a dot per command that ran, then the running one; skipped commands get none")
+	func commandDots() {
+		var process = HomerProcess(
+			id: 1,
+			status: .working,
+			agentName: "a",
+			executions: [
+				.init(label: "build", resultCode: 0),
+				.init(label: "notify", resultCode: 0, skipped: true),
+				.init(label: "test", resultCode: 1),
+			],
+			currentCommand: "deploy"
+		)
+		#expect(process.commandDots == [
+			.init(label: "build", outcome: .succeeded),
+			.init(label: "test", outcome: .failed),
+			.init(label: "deploy", outcome: .running),
+		])
+
+		// The running command is a working run's only.
+		process.status = .killed
+		#expect(process.commandDots.map(\.label) == ["build", "test"])
+		#expect(process.lastCommand?.label == "test")
+	}
+
+	@Test("a run's duration runs to now while it is active, else to its last status change")
+	func duration() {
+		let now = Date(timeIntervalSince1970: 1_000_500)
+		var process = HomerProcess(
+			id: 1,
+			status: .working,
+			agentName: "a",
+			history: [.init(timestamp: 1_000_000, status: .created), .init(timestamp: 1_000_100, status: .working)]
+		)
+		#expect(process.duration(now: now) == 500)
+
+		process.status = .finished
+		process.history.append(.init(timestamp: 1_000_300, status: .finished))
+		#expect(process.duration(now: now) == 300)
+
+		process.history = []
+		#expect(process.duration(now: now) == nil)
+
+		// A clock behind the server's says nothing rather than a negative time.
+		process = HomerProcess(id: 1, status: .created, agentName: "a", history: [.init(timestamp: 1_000_600, status: .created)])
+		#expect(process.duration(now: now) == nil)
 	}
 
 	@Test("health decodes maintenance mode, unknown to a server that predates it")
