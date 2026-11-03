@@ -317,6 +317,8 @@ struct HomerInstanceReducerTests {
 		let store = TestStore(initialState: signedInState()) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = clock
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }
@@ -331,7 +333,7 @@ struct HomerInstanceReducerTests {
 				return HomerHealth(runners: runners, sweep: sweep, maintenance: first)
 			}
 			$0[HomerContinuationsClient.self].pendingCount = { _ in 0 }
-			$0[HomerContinuationsClient.self].continuations = { _, _ in [] }
+			$0[HomerContinuationsClient.self].continuations = { _, _ in HomerRecordPage(items: []) }
 			$0[HomerMaintenanceClient.self].maintenance = { _ in HomerMaintenance(enabled: true) }
 		}
 		// The other polls run too; this test is about health.
@@ -361,6 +363,8 @@ struct HomerInstanceReducerTests {
 		let store = TestStore(initialState: signedInState()) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }
@@ -572,6 +576,8 @@ struct HomerInstanceReducerTests {
 		let store = TestStore(initialState: initialState) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = clock
 			$0[HomerClient.self].processes = { _, query in
 				query.rootProcessId == 1
@@ -843,6 +849,8 @@ struct HomerInstanceReducerTests {
 		let store = TestStore(initialState: signedInState()) {
 			HomerInstanceReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { _, _ in HomerProcessPage(processes: [], total: 0) }
 			$0[HomerClient.self].agentNames = { _ in [] }

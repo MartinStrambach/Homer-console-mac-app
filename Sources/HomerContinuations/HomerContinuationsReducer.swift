@@ -2,207 +2,153 @@ import ComposableArchitecture
 import Foundation
 import HomerCore
 
-/// The Continuations page of one instance (`app/(dashboard)/continuations/page.tsx`): the
-/// pending continuations — parked workflows waiting on a watched run to finish before starting
-/// a follow-up agent — and the ones that failed to fire. A pending one can be cancelled.
+public typealias HomerContinuationListReducer = HomerRecordListReducer<HomerContinuationKind>
+public typealias HomerDispatchListReducer = HomerRecordListReducer<HomerDispatchKind>
+
+/// The Continuations page of one instance (`app/(dashboard)/continuations/page.tsx`), and the
+/// ask-and-dispatches beside them: two kinds of agent the server starts later on a run's behalf —
+/// once a watched run finishes, or once a question is answered. Each is a list
+/// (`HomerRecordListReducer`) of what needs attention by default, its history on a filter; the
+/// section picker shows one at a time, and only that one polls. A card opens the record's detail.
 @Reducer
 public struct HomerContinuationsReducer: Sendable {
-	/// The console's cadence (`useContinuations`): there is no continuation event to listen to.
-	package static let pollInterval: Duration = .seconds(30)
+	/// The lists' cadence (`useContinuations`).
+	package static let pollInterval = HomerContinuationListReducer.pollInterval
 
-	/// What the console says when a cancel answers 409 or 404 — the list was stale.
-	static let notCancellableMessage =
-		"This continuation can no longer be cancelled — it already fired or was cancelled."
+	public enum Section: CaseIterable, Equatable, Sendable {
+		case continuations
+		case dispatches
+
+		public var title: String {
+			switch self {
+			case .continuations:
+				"Continuations"
+			case .dispatches:
+				"Dispatches"
+			}
+		}
+	}
 
 	@ObservableState
 	public struct State: Equatable {
 		public let baseURL: String
-		public internal(set) var pending: IdentifiedArrayOf<HomerContinuation> = []
-		/// Continuations that never started their follow-up agent. Agents use continuations to
-		/// report crashes, so a lost one is a report nobody gets — the console lists them for
-		/// that reason.
-		public internal(set) var failed: IdentifiedArrayOf<HomerContinuation> = []
-		public internal(set) var hasLoaded = false
-		/// The last refresh's failure; the last good lists stay on screen under it.
-		public internal(set) var loadError: String?
-		/// Cancel requests still waiting on the server.
-		public internal(set) var cancellingIDs: Set<HomerContinuation.ID> = []
-		/// Why a cancel failed, shown on the continuation's card as the console does.
-		public internal(set) var cancelErrors: [HomerContinuation.ID: String] = [:]
+		public internal(set) var section: Section = .continuations
+		public var continuations: HomerContinuationListReducer.State
+		public var dispatches: HomerDispatchListReducer.State
+		/// The agent filter's choices: the instance's agent names, which it keeps current.
+		public var agentNames: [String] = []
 		@Presents
-		public var alert: AlertState<Action.Alert>?
-		/// Between `shown` and `hidden`. An answer arriving outside it is dropped.
+		public var detail: HomerRecordDetailReducer.State?
+		/// Between `shown` and `hidden`.
 		var isShown = false
 
 		public init(baseURL: String) {
 			self.baseURL = baseURL
-		}
-	}
-
-	/// The two lists the page shows, fetched together.
-	public struct Lists: Equatable, Sendable {
-		public var pending: [HomerContinuation]
-		public var failed: [HomerContinuation]
-
-		public init(pending: [HomerContinuation], failed: [HomerContinuation]) {
-			self.pending = pending
-			self.failed = failed
+			self.continuations = HomerContinuationListReducer.State(baseURL: baseURL)
+			self.dispatches = HomerDispatchListReducer.State(baseURL: baseURL)
 		}
 	}
 
 	public enum Action {
-		/// The page came on screen; it polls until `hidden`.
+		/// The page came on screen; its section polls until `hidden`.
 		case shown
 		case hidden
-		/// The header's Refresh: fetches right away, without waiting for the next poll.
+		/// The header's Refresh: the section on screen fetches right away.
 		case refreshTapped
+		case sectionChanged(Section)
+		/// A card's click: its detail opens in a sheet.
+		case recordTapped(HomerRecordDetailReducer.Record)
 		case delegate(HomerPageDelegate)
 
-		case loaded(Result<Lists, any Error>)
-		case processTapped(processId: Int)
-		case cancelTapped(id: HomerContinuation.ID)
-		case cancelFinished(id: HomerContinuation.ID, Result<Void, any Error>)
-		case alert(PresentationAction<Alert>)
-
-		public enum Alert: Equatable, Sendable {
-			case cancelConfirmed(id: HomerContinuation.ID)
-		}
+		case continuations(HomerContinuationListReducer.Action)
+		case dispatches(HomerDispatchListReducer.Action)
+		case detail(PresentationAction<HomerRecordDetailReducer.Action>)
 	}
-
-	private nonisolated enum CancelID: Hashable {
-		case polling
-	}
-
-	@Dependency(HomerContinuationsClient.self)
-	private var client
-
-	@Dependency(\.continuousClock)
-	private var clock
 
 	public init() {}
 
 	public var body: some Reducer<State, Action> {
+		Scope(\.continuations, action: \.continuations) {
+			HomerContinuationListReducer()
+		}
+		Scope(\.dispatches, action: \.dispatches) {
+			HomerDispatchListReducer()
+		}
 		Reduce { state, action in
 			switch action {
 			case .shown:
 				state.isShown = true
-				return poll(state)
-
-			case .refreshTapped:
-				return state.isShown ? poll(state) : .none
+				return show(state.section)
 
 			case .hidden:
 				state.isShown = false
-				return .cancel(id: CancelID.polling)
+				return hide(state.section)
 
-			case .delegate:
-				return .none
-
-			case let .loaded(.success(lists)):
+			case .refreshTapped:
 				guard state.isShown else {
 					return .none
 				}
-				state.pending = IdentifiedArray(lists.pending, uniquingIDsWith: { first, _ in first })
-				state.failed = IdentifiedArray(lists.failed, uniquingIDsWith: { first, _ in first })
-				state.hasLoaded = true
-				state.loadError = nil
-				// A cancel error belongs to a card still offering Cancel.
-				let pendingIDs = Set(state.pending.ids)
-				state.cancelErrors = state.cancelErrors.filter { pendingIDs.contains($0.key) }
-				return .none
+				switch state.section {
+				case .continuations:
+					return .send(.continuations(.refreshTapped))
+				case .dispatches:
+					return .send(.dispatches(.refreshTapped))
+				}
 
-			case let .loaded(.failure(error)):
-				guard state.isShown else {
+			case let .sectionChanged(section):
+				guard section != state.section else {
 					return .none
 				}
-				if error as? HomerAPIError == .unauthorized {
+				let previous = state.section
+				state.section = section
+				return state.isShown ? .merge(hide(previous), show(section)) : .none
+
+			case let .recordTapped(record):
+				state.detail = HomerRecordDetailReducer.State(baseURL: state.baseURL, record: record)
+				return .none
+
+			case let .continuations(.delegate(delegate)), let .dispatches(.delegate(delegate)):
+				return .send(.delegate(delegate))
+
+			case let .detail(.presented(.delegate(delegate))):
+				switch delegate {
+				case .unauthorized:
 					return .send(.delegate(.unauthorized))
+				case let .openProcess(processId):
+					state.detail = nil
+					return .send(.delegate(.openProcess(processId: processId)))
+				case let .cancel(.continuation(continuation)):
+					state.detail = nil
+					return .send(.continuations(.cancelTapped(id: continuation.id)))
+				case let .cancel(.dispatch(dispatch)):
+					state.detail = nil
+					return .send(.dispatches(.cancelTapped(id: dispatch.id)))
 				}
-				state.loadError = error.localizedDescription
+
+			case .delegate, .continuations, .dispatches, .detail:
 				return .none
-
-			case let .processTapped(processId):
-				return .send(.delegate(.openProcess(processId: processId)))
-
-			case let .cancelTapped(id):
-				guard let continuation = state.pending[id: id], continuation.isCancellable else {
-					return .none
-				}
-				state.cancelErrors[id] = nil
-				state.alert = AlertState {
-					TextState("Cancel this continuation?")
-				} actions: {
-					ButtonState(role: .destructive, action: .cancelConfirmed(id: id)) {
-						TextState("Yes, Cancel")
-					}
-					ButtonState(role: .cancel) {
-						TextState("Keep Waiting")
-					}
-				} message: {
-					TextState(
-						"This stops \(continuation.agentName) from starting when run #\(continuation.watchedProcessId) finishes. This cannot be undone."
-					)
-				}
-				return .none
-
-			case let .alert(.presented(.cancelConfirmed(id))):
-				guard state.cancellingIDs.insert(id).inserted else {
-					return .none
-				}
-				return .run { [baseURL = state.baseURL] send in
-					await send(.cancelFinished(id: id, Result { try await client.cancel(baseURL, id) }))
-				}
-
-			case .alert:
-				return .none
-
-			case let .cancelFinished(id, result):
-				// Not waited on any more: the page's state was replaced (signed out) meanwhile.
-				guard state.cancellingIDs.remove(id) != nil else {
-					return .none
-				}
-				switch result {
-				case .success:
-					state.pending.remove(id: id)
-				case let .failure(error):
-					if error as? HomerAPIError == .unauthorized {
-						return .send(.delegate(.unauthorized))
-					}
-					state.cancelErrors[id] = Self.cancelErrorMessage(error)
-				}
-				// Either way the lists are refetched, as the console does on settle: a 409/404
-				// means what is shown was stale. The badge's count too.
-				return .merge(
-					.send(.delegate(.continuationsChanged)),
-					state.isShown ? poll(state) : .none
-				)
 			}
 		}
-		.ifLet(\.$alert, action: \.alert)
-	}
-
-	static func cancelErrorMessage(_ error: any Error) -> String {
-		switch error as? HomerAPIError {
-		case .conflict, .server(status: 404, _):
-			notCancellableMessage
-		default:
-			error.localizedDescription
+		.ifLet(\.$detail, action: \.detail) {
+			HomerRecordDetailReducer()
 		}
 	}
 
-	/// Fetches both lists right away, then on the console's cadence. Restarting it replaces the
-	/// running loop, so an older answer never lands after a newer one.
-	private func poll(_ state: State) -> Effect<Action> {
-		.run { [baseURL = state.baseURL] send in
-			while true {
-				await send(.loaded(Result {
-					async let pending = client.continuations(baseURL, .pending)
-					async let failed = client.continuations(baseURL, .failed)
-					return try await Lists(pending: pending, failed: failed)
-				}))
-				try await clock.sleep(for: Self.pollInterval)
-			}
+	private func show(_ section: Section) -> Effect<Action> {
+		switch section {
+		case .continuations:
+			.send(.continuations(.shown))
+		case .dispatches:
+			.send(.dispatches(.shown))
 		}
-		.cancellable(id: CancelID.polling, cancelInFlight: true)
+	}
+
+	private func hide(_ section: Section) -> Effect<Action> {
+		switch section {
+		case .continuations:
+			.send(.continuations(.hidden))
+		case .dispatches:
+			.send(.dispatches(.hidden))
+		}
 	}
 }

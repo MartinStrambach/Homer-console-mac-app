@@ -2,7 +2,7 @@
 
 # Homer Console for Mac
 
-A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations, agents and schedules, costs, runners, an agent's page, creating an agent, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
+A native macOS client for Homer consoles: sign-in, the process list and a process's page, the open questions, continuations and pending dispatches, agents and schedules, costs, runners, an agent's page, creating an agent, its file editor and debug runs, and LangGraph workflow graphs, for any number of Homer instances at once. What is left (the graph of a workflow whose server predates Homer 1.28) opens as the web console's own page.
 
 It is a Swift package, `HomerFeature`, which [Bridge Commander](https://github.com/MartinStrambach/Bridge-Commander) embeds as its Homer section, and a standalone app (`App/`) that runs only the console.
 
@@ -17,7 +17,7 @@ Sources/
   HomerSignIn/          # sign-in form (reducer + view), Fill from Passwords
   HomerProcessDetail/   # a run's page: status, its flow or children, executions, command output, artifacts, LLM harness conversations
   HomerAgents/          # Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor
-  HomerContinuations/   # Continuations page
+  HomerContinuations/   # Continuations page: continuations and ask-and-dispatches
   HomerCosts/           # Costs page (admins)
   HomerRunners/         # Runners page (admins): runners, external instances, claim queue
   HomerFeature/         # HomerConsoleReducer/View, HomerInstanceReducer, process list, questions — composes the rest
@@ -87,7 +87,7 @@ Each module's notes are in its own README, next to its sources:
 | `HomerSignIn` | [sign-in and session expiry, Fill from Passwords](Sources/HomerSignIn/README.md) |
 | `HomerProcessDetail` | [the process page, command output streaming, LLM harness conversations, downloads](Sources/HomerProcessDetail/README.md) |
 | `HomerAgents` | [Agents and Schedules, an agent's page, the Run sheet, an agent's graphs, the editor and debug runs](Sources/HomerAgents/README.md) |
-| `HomerContinuations` | [the Continuations page](Sources/HomerContinuations/README.md) |
+| `HomerContinuations` | [the Continuations page: continuations and dispatches, their history and detail](Sources/HomerContinuations/README.md) |
 | `HomerCosts` | [the Costs page](Sources/HomerCosts/README.md) |
 | `HomerRunners` | [the Runners page](Sources/HomerRunners/README.md) |
 | `HomerFeature` | [instances, the instance list, polling, the process list, the other pages, questions](Sources/HomerFeature/README.md) |

@@ -10,6 +10,9 @@ public enum HomerPageDelegate: Equatable, Sendable {
 	/// The pending continuations changed here (a cancel): the badge's count is re-read rather
 	/// than left to its next poll.
 	case continuationsChanged
+	/// Open questions changed here (a dispatch cancelled, its question expiring with it): they
+	/// are re-read rather than left to their next poll.
+	case questionsChanged
 }
 
 /// The instance's pages that have a reducer of their own. Each is told when it comes on screen

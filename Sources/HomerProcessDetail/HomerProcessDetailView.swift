@@ -228,8 +228,8 @@ package struct HomerProcessDetailView<Questions: View>: View {
 			// A plain stack: a run has a handful of sections and executions.
 			ScrollView {
 				VStack(alignment: .leading, spacing: 16) {
-					if let reason = process.failureReason {
-						failureReason(reason)
+					if let reason = process.failureReasonSentence {
+						failureReason(reason, blockedBy: process.blockingRunId)
 					}
 					stats(process)
 					if contentWidth >= Self.twoColumnWidth {
@@ -246,6 +246,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 							.frame(maxWidth: .infinity)
 							VStack(alignment: .leading, spacing: 16) {
 								timeline(process)
+								if process.hasRetention {
+									HomerRetainedArtifactsSection(process: process)
+								}
 								if let runner = process.runner {
 									HomerRunnerPanel(runner: runner)
 								}
@@ -262,6 +265,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 							HomerRunMessagesSection(store: store)
 						}
 						timeline(process)
+						if process.hasRetention {
+							HomerRetainedArtifactsSection(process: process)
+						}
 						HomerRelatedRunsSection(store: store)
 						executions(process)
 					}
@@ -282,8 +288,9 @@ package struct HomerProcessDetailView<Questions: View>: View {
 	}
 
 	/// Why the run ended `FAILED` before any command started (Homer 1.38, `FailureReason`'s
-	/// `detail` variant) — the one thing such a run has to say, so it leads the page.
-	private func failureReason(_ reason: String) -> some View {
+	/// `detail` variant) — the one thing such a run has to say, so it leads the page. When a lock
+	/// held by another run stopped it, that run is a link.
+	private func failureReason(_ reason: String, blockedBy blockingRunId: Int?) -> some View {
 		HStack(alignment: .firstTextBaseline, spacing: 8) {
 			Image(systemName: "exclamationmark.triangle.fill")
 				.foregroundStyle(.red)
@@ -293,6 +300,15 @@ package struct HomerProcessDetailView<Questions: View>: View {
 				Text(reason)
 					.textSelection(.enabled)
 					.fixedSize(horizontal: false, vertical: true)
+				if let blockingRunId {
+					Button {
+						store.send(.processLinkTapped(processId: blockingRunId))
+					} label: {
+						Label("Blocked by run #\(blockingRunId)", systemImage: "lock")
+					}
+					.buttonStyle(.link)
+					.help("Open run #\(blockingRunId), which held the lock this run needed")
+				}
 			}
 		}
 		.scaledFont(.callout)
@@ -644,9 +660,14 @@ struct HomerExecutionRow: View {
 			.background(color.opacity(0.15), in: Circle())
 	}
 
-	/// Only what the icon does not say: a skip, or a failure's exit code.
+	/// Only what the icon does not say: a skip, or a failure's exit code — and output the
+	/// server's cap cut off.
 	@ViewBuilder
 	private var outcomeLabel: some View {
+		if execution.outputTruncated == true {
+			HomerPill("Output truncated", color: .orange, systemImage: "scissors")
+				.help("The command's output passed the server's size cap (maxOutputBytes), which killed the command: its output ends there")
+		}
 		if execution.skipped == true {
 			HomerPill("Skipped", color: .gray)
 				.help(execution.errMsg ?? "")

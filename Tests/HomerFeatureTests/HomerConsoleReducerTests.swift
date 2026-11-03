@@ -89,6 +89,8 @@ struct HomerConsoleReducerTests {
 		let store = TestStore(initialState: signedInState(selected: Self.first)) {
 			HomerConsoleReducer()
 		} withDependencies: {
+			// An admin's server state; not what this test is about.
+			$0[HomerServerStatusClient.self].status = { _ in throw HomerAPIError.forbidden }
 			$0.continuousClock = TestClock()
 			$0[HomerClient.self].processes = { baseURL, _ in
 				listed.withValue { $0.append(baseURL) }
