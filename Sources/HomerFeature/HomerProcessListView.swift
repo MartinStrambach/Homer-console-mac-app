@@ -307,7 +307,7 @@ struct HomerProcessListView: View {
 			TableColumn("Actions") { process in
 				actions(for: process)
 			}
-			.width(min: 44, ideal: 56)
+			.width(min: 64, ideal: 76)
 		}
 		// Stripes would run on past the last row and fill the page; the pills carry the rows.
 		.alternatingRowBackgrounds(.disabled)
@@ -343,7 +343,7 @@ struct HomerProcessListView: View {
 	private func actions(for process: HomerProcess) -> some View {
 		if store.processActionsInFlight.contains(process.id) {
 			ProgressView()
-				.controlSize(.small)
+				.controlSize(.regular)
 		}
 		else if process.isKillable, store.user?.canKill(process) == true {
 			Button(role: .destructive) {
@@ -354,7 +354,7 @@ struct HomerProcessListView: View {
 					.foregroundStyle(.red)
 			}
 			.buttonStyle(.scaledBordered)
-			.controlSize(.small)
+			.controlSize(.large)
 			.help("Kill process \(process.id)")
 		}
 		else if process.isRetryable, store.user?.canRetry(process) == true {
@@ -365,7 +365,7 @@ struct HomerProcessListView: View {
 					.labelStyle(.iconOnly)
 			}
 			.buttonStyle(.scaledBordered)
-			.controlSize(.small)
+			.controlSize(.large)
 			.help("Retry process \(process.id): start it again with the same inputs")
 		}
 	}
