@@ -7,6 +7,7 @@ import Foundation
 import HomerCosts
 @testable import HomerFeature
 @testable import HomerProcessDetail
+@testable import HomerRunners
 import HomerSignIn
 import Testing
 
@@ -122,6 +123,46 @@ struct HomerChildPageTests {
 
 		await store.send(.pageChanged(.costs)) {
 			$0.page = .costs
+		}
+	}
+
+	@Test("the Runners page polls while an admin has it on screen, and is hidden for anyone else")
+	func runnersPage() async {
+		let runners = HomerRunners(runners: [HomerRunner(alias: "local", kind: "local", inUse: 1)])
+		let queue = HomerRunnerQueue(pending: 0)
+		let store = TestStore(initialState: activeState(user: HomerUser(username: "admin", role: "admin"))) {
+			HomerInstanceReducer()
+		} withDependencies: {
+			$0.continuousClock = TestClock()
+			$0[HomerRunnersClient.self].runners = { _ in runners }
+			$0[HomerRunnersClient.self].queue = { _ in queue }
+		}
+
+		store.exhaustivity = .off(showSkippedAssertions: false)
+		await store.send(.pageChanged(.runners)) {
+			$0.page = .runners
+			$0.shownChildPage = .runners
+		}
+		await store.receive(\.runners.shown)
+		await store.receive(\.runners.runnersLoaded.success)
+		await store.receive(\.runners.queueLoaded.success)
+		#expect(store.state.runners.runners == runners)
+		#expect(store.state.runners.queue == queue)
+		store.exhaustivity = .on
+
+		await store.send(.pageChanged(.processes)) {
+			$0.page = .processes
+			$0.shownChildPage = nil
+		}
+		await store.receive(\.runners.hidden) {
+			$0.runners.isShown = false
+		}
+
+		let devStore = TestStore(initialState: activeState(user: HomerUser(username: "dev"))) {
+			HomerInstanceReducer()
+		}
+		await devStore.send(.pageChanged(.runners)) {
+			$0.page = .runners
 		}
 	}
 

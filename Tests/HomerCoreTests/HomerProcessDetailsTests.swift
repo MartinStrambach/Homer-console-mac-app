@@ -32,6 +32,15 @@ struct HomerFormatTests {
 
 		#expect(HomerFormat.timeUntil(1_700_000_000 + offset, now: now) == expected)
 	}
+
+	@Test("time since a moment, counting up")
+	func timeSince() {
+		let now = Date(timeIntervalSince1970: 1_000_000)
+		#expect(HomerFormat.timeSince(1_000_000 - (2 * 3600 + 3 * 60 + 5), now: now) == "2h 3m ago")
+		#expect(HomerFormat.timeSince(1_000_000 - 26 * 3600, now: now) == "1d 2h ago")
+		#expect(HomerFormat.timeSince(1_000_000 - 45, now: now) == "45s ago")
+		#expect(HomerFormat.timeSince(1_000_000, now: now) == "just now")
+	}
 }
 
 @Suite("Homer kill and retry permissions")

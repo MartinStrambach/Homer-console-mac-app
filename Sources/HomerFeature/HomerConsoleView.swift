@@ -4,6 +4,7 @@ import HomerContinuations
 import HomerCore
 import HomerCosts
 import HomerProcessDetail
+import HomerRunners
 import HomerSignIn
 import HomerUI
 import SwiftUI
@@ -378,6 +379,8 @@ struct HomerInstanceView: View {
 				HomerAgentsView(store: store.scope(\.agents, action: \.agents), user: user)
 			case .costs:
 				HomerCostsView(store: store.scope(\.costs, action: \.costs))
+			case .runners:
+				HomerRunnersView(store: store.scope(\.runners, action: \.runners))
 			}
 		}
 	}

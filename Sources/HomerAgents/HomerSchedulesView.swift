@@ -136,7 +136,7 @@ package struct HomerSchedulesView: View {
 							HStack(alignment: .firstTextBaseline, spacing: 6) {
 								Text(lastFired.name)
 									.truncationMode(.middle)
-								HomerScheduleElapsedText(epochSeconds: lastFired.at)
+								HomerElapsedText(epochSeconds: lastFired.at)
 									.scaledFont(.callout)
 									.foregroundStyle(.secondary)
 							}
@@ -347,7 +347,7 @@ struct HomerScheduleRow: View {
 		VStack(alignment: .leading, spacing: 4) {
 			columnTitle("Last run", systemImage: "clock.arrow.circlepath")
 			if let lastRunAt = cron.lastRunAt {
-				HomerScheduleElapsedText(epochSeconds: lastRunAt)
+				HomerElapsedText(epochSeconds: lastRunAt)
 					.scaledFont(.body)
 					.fontWeight(.semibold)
 				HStack(spacing: 6) {
@@ -462,18 +462,6 @@ struct HomerScheduleCountdownText: View {
 	var body: some View {
 		TimelineView(.periodic(from: .now, by: 1)) { context in
 			Text(HomerFormat.timeUntil(epochSeconds, now: context.date))
-				.monospacedDigit()
-		}
-	}
-}
-
-/// "12m ago" since a moment, counting up every second.
-struct HomerScheduleElapsedText: View {
-	let epochSeconds: Double
-
-	var body: some View {
-		TimelineView(.periodic(from: .now, by: 1)) { context in
-			Text(HomerScheduleFormat.timeSince(epochSeconds, now: context.date))
 				.monospacedDigit()
 		}
 	}

@@ -5,6 +5,7 @@ import HomerContinuations
 import HomerCore
 import HomerCosts
 import HomerProcessDetail
+import HomerRunners
 import HomerSignIn
 
 /// One Homer instance of the console: its session, sign-in form, process list, open
@@ -123,6 +124,7 @@ public struct HomerInstanceReducer: Sendable {
 		public var continuations: HomerContinuationsReducer.State
 		public var agents: HomerAgentsReducer.State
 		public var costs: HomerCostsReducer.State
+		public var runners: HomerRunnersReducer.State
 		/// The page reducer told it is on screen, so it polls.
 		var shownChildPage: HomerChildPage?
 
@@ -145,6 +147,7 @@ public struct HomerInstanceReducer: Sendable {
 			self.continuations = HomerContinuationsReducer.State(baseURL: baseURL)
 			self.agents = HomerAgentsReducer.State(baseURL: baseURL)
 			self.costs = HomerCostsReducer.State(baseURL: baseURL)
+			self.runners = HomerRunnersReducer.State(baseURL: baseURL)
 		}
 
 		public var id: String {
@@ -306,6 +309,7 @@ public struct HomerInstanceReducer: Sendable {
 		case continuations(HomerContinuationsReducer.Action)
 		case agents(HomerAgentsReducer.Action)
 		case costs(HomerCostsReducer.Action)
+		case runners(HomerRunnersReducer.Action)
 		case processDetail(PresentationAction<HomerProcessDetailReducer.Action>)
 
 		public typealias ProcessAction = HomerProcessAction
@@ -357,6 +361,9 @@ public struct HomerInstanceReducer: Sendable {
 		}
 		Scope(\.costs, action: \.costs) {
 			HomerCostsReducer()
+		}
+		Scope(\.runners, action: \.runners) {
+			HomerRunnersReducer()
 		}
 		Reduce { state, action in
 			switch action {
@@ -981,7 +988,8 @@ public struct HomerInstanceReducer: Sendable {
 
 			case .continuations(.delegate(let delegate)),
 			     .agents(.delegate(let delegate)),
-			     .costs(.delegate(let delegate)):
+			     .costs(.delegate(let delegate)),
+			     .runners(.delegate(let delegate)):
 				switch delegate {
 				case .unauthorized:
 					guard state.user != nil else {
@@ -1002,7 +1010,7 @@ public struct HomerInstanceReducer: Sendable {
 				state.pendingContinuations = count
 				return .none
 
-			case .continuations, .agents, .costs:
+			case .continuations, .agents, .costs, .runners:
 				return .none
 			}
 		}
@@ -1397,6 +1405,12 @@ public struct HomerInstanceReducer: Sendable {
 					await send(.costs(.hidden))
 				case (.costs, .refresh):
 					await send(.costs(.refreshTapped))
+				case (.runners, .shown):
+					await send(.runners(.shown))
+				case (.runners, .hidden):
+					await send(.runners(.hidden))
+				case (.runners, .refresh):
+					await send(.runners(.refreshTapped))
 				}
 			}
 		}
@@ -1410,6 +1424,7 @@ public struct HomerInstanceReducer: Sendable {
 		state.continuations = HomerContinuationsReducer.State(baseURL: state.baseURL)
 		state.agents = HomerAgentsReducer.State(baseURL: state.baseURL)
 		state.costs = HomerCostsReducer.State(baseURL: state.baseURL)
+		state.runners = HomerRunnersReducer.State(baseURL: state.baseURL)
 		state.processes = []
 		state.processTotal = 0
 		state.processLimit = Self.pageSize
